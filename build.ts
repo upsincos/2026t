@@ -3,10 +3,10 @@
  * 交易博客生成器：把 posts/ 里的 Markdown 渲染成一套静态多页 HTML 站点。
  *
  * 输出的是一套「真博客」，而不是一本一次加载完的单页书：
- *   index.html         首页：顶栏（站名 / 栏目筛选 / 搜索 / 明暗 / 计数）+ 按时间倒序的文章卡片列表
+ *   index.html         首页：顶栏 + 左侧栏（置顶 / 栏目 / 标签 / 统计）+ 按时间倒序的简明文章列表
  *   posts/<slug>.html  文章页：标题 + 元信息 + 正文（小节 ≥2 时带左侧目录）+ 「更新的一篇 / 更早的一篇」两个链接
  *   assets/            正文图片压缩后的成品
- * 首页只放卡片（编号 / 标题 / 日期 / 栏目 / 标签 / 约 100 字摘要），正文一律留在文章页。
+ * 首页只放简洁条目（标题 / 一行摘要 / 日期 · 栏目 · 标签），正文留在文章页；frontmatter 写 pin: true 可置顶。
  *
  * 视觉沿用 cdyforever/how-to-live-better 那套阅读页：明暗主题、手机端自适应、
  * 可打印、图片压缩 + 懒加载 + 点击放大。零外部资源，断网可读。
@@ -88,7 +88,7 @@ function printHelp(): void {
   node build.ts --watch              # 监听内容目录变化，自动重建（生成的 .html 不会触发）
 
 产物结构：
-  index.html          首页：顶栏 + 按时间倒序的文章卡片列表（编号 / 标题 / 日期 / 栏目 / 标签 / 摘要）
+  index.html          首页：顶栏 + 左侧栏（置顶 / 栏目 / 标签）+ 按时间倒序的简明文章列表
   posts/<slug>.html   文章页：标题 + 元信息 + 正文（≥2 个小节带左侧目录）+ 「更新的一篇 / 更早的一篇」链接
   assets/             正文图片压缩后的成品（WebP、长边 ≤1600px）
 
@@ -136,6 +136,7 @@ interface Entry {
   file: string;
   dir: string;      // md 所在目录（用于解析图片相对路径）
   relPath: string;  // 相对内容根目录的路径（用于提示信息）
+  pinned: boolean;  // frontmatter 写 pin: true 时置顶
 }
 
 interface Section {
@@ -160,7 +161,25 @@ function parseFrontmatter(raw: string): { meta: Record<string, string>; body: st
   const meta: Record<string, string> = {};
   for (let i = 1; i < end; i++) {
     const m = /^([A-Za-z0-9_\u4e00-\u9fa5-]+)\s*[:：]\s*(.*)$/.exec(lines[i]);
-    if (m) meta[m[1].toLowerCase()] = m[2].trim();
+    if (!m) continue;
+    const key = m[1].toLowerCase();
+    if (m[2].trim() === '') {
+      // Obsidian 风格的 YAML 列表：tags:\n  - a\n  - b
+      const items: string[] = [];
+      let j = i + 1;
+      while (j < end) {
+        const it = /^\s*-\s+(.+?)\s*$/.exec(lines[j]);
+        if (!it) break;
+        items.push(it[1].replace(/^['"]|['"]$/g, ''));
+        j++;
+      }
+      if (items.length) {
+        meta[key] = items.join(',');
+        i = j - 1;
+        continue;
+      }
+    }
+    meta[key] = m[2].trim();
   }
   return { meta, body: lines.slice(end + 1).join('\n') };
 }
@@ -189,12 +208,19 @@ function loadSection(sec: { dir: string; label: string }): Entry[] {
     const raw = readFileSync(full, 'utf8');
     const { meta, body } = parseFrontmatter(raw);
     const stem = name.replace(/\.md$/i, '');
-    const dm = /^(\d{4}-\d{2}-\d{2})[-_ ]?(.*)$/.exec(stem);
-    const date = (meta['date'] || (dm ? dm[1] : '')).trim();
+    // 2026-09-28 或 2026-9-28 都认；统一规范化成 YYYY-MM-DD（排序用）
+    const dm = /^(\d{4})-(\d{1,2})-(\d{1,2})[-_ ]?(.*)$/.exec(stem);
+    const pad2 = (x: string) => x.padStart(2, '0');
+    const fileDate = dm ? `${dm[1]}-${pad2(dm[2])}-${pad2(dm[3])}` : '';
+    const date = (meta['date'] || fileDate)
+      .trim()
+      .replace(/^(\d{4})-(\d{1,2})-(\d{1,2})$/, (_s: string, y: string, mo: string, d: string) => `${y}-${pad2(mo)}-${pad2(d)}`);
     let title = (meta['title'] || '').trim();
-    if (!title) title = dm && dm[2] ? dm[2].trim() : stem;
+    if (!title) title = dm && dm[4] ? dm[4].trim() : stem;
     const tags = splitTags(meta['tags']);
-    entries.push({ title, date, tags, body, file: name, dir, relPath: join(sec.dir, name) });
+    const pinVal = (meta['pin'] || '').trim().toLowerCase();
+    const pinned = ['true', '1', 'yes', 'y', '是'].includes(pinVal);
+    entries.push({ title, date, tags, body, file: name, dir, relPath: join(sec.dir, name), pinned });
   }
   // 有日期的新的在前；无日期的排在后面，按文件名
   entries.sort((a, b) => {
@@ -222,6 +248,8 @@ const assetsDir = join(SITE_ROOT, IMAGES.dir);
 
 // 匹配 ![alt](src) 或 ![alt](<src with space>)；可带 "title"
 const RE_IMG = /!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"[^"]*")?\s*\)/g;
+// Obsidian 式图片引用：![[名称]]（可带别名 |xxx）
+const RE_WIKI = /!\[\[([^\]|]+?)(?:\|([^\]]*))?\]\]/g;
 
 function cleanSrc(raw: string): string {
   let p = raw.trim();
@@ -263,6 +291,51 @@ function resolveImagePath(rawSrc: string, mdDir: string): string | null {
   return res;
 }
 
+// Obsidian 式图片 ![[名称]]：先同目录、再 images/ 子目录、再内容根，最后按文件名全内容目录兜底
+const WIKI_FILES = new Map<string, string | null>();
+function resolveWikiImage(name: string, mdDir: string): string | null {
+  const key = 'wiki\u0000' + name + '\u0000' + mdDir;
+  const hit = RESOLVE_CACHE.get(key);
+  if (hit !== undefined) return hit;
+  const compute = (): string | null => {
+    const tries = [join(mdDir, name), join(mdDir, 'images', name), join(CONTENT, name)];
+    for (const t of tries) {
+      try {
+        if (statSync(t).isFile()) return t;
+      } catch {
+        /* 下一个 */
+      }
+    }
+    if (WIKI_FILES.size === 0) {
+      const walk = (d: string): void => {
+        let items: string[] = [];
+        try {
+          items = readdirSync(d);
+        } catch {
+          return;
+        }
+        for (const it of items) {
+          const p = join(d, it);
+          try {
+            if (statSync(p).isDirectory()) {
+              if (!it.startsWith('.')) walk(p);
+            } else if (!WIKI_FILES.has(it)) {
+              WIKI_FILES.set(it, p);
+            }
+          } catch {
+            /* 忽略 */
+          }
+        }
+      };
+      walk(CONTENT);
+    }
+    return WIKI_FILES.get(name) ?? null;
+  };
+  const res = compute();
+  RESOLVE_CACHE.set(key, res);
+  return res;
+}
+
 function collectImageJobs(entries: Entry[]): void {
   for (const e of entries) {
     for (const m of e.body.matchAll(RE_IMG)) {
@@ -271,6 +344,15 @@ function collectImageJobs(entries: Entry[]): void {
       const abs = resolveImagePath(src, e.dir);
       if (!abs) {
         IMG_MISSING.push({ src, from: e.relPath });
+        continue;
+      }
+      if (!IMG_JOBS.has(abs)) IMG_JOBS.set(abs, { abs });
+    }
+    for (const w of e.body.matchAll(RE_WIKI)) {
+      const name = w[1].trim();
+      const abs = resolveWikiImage(name, e.dir);
+      if (!abs) {
+        IMG_MISSING.push({ src: name, from: e.relPath });
         continue;
       }
       if (!IMG_JOBS.has(abs)) IMG_JOBS.set(abs, { abs });
@@ -603,6 +685,15 @@ function imgTagFor(rawSrc: string, alt: string, mdDir: string, prefix = ''): str
   return `<img src="${escAttr(url)}" alt="${escAttr(alt)}"${dims} loading="lazy" decoding="async">`;
 }
 
+function imgTagForWiki(rawName: string, alt: string, mdDir: string, prefix = ''): string {
+  const name = rawName.trim();
+  const abs = resolveWikiImage(name, mdDir);
+  const info = abs ? IMG_INFOS.get(abs) ?? null : null;
+  const url = info ? prefix + info.rel : name;
+  const dims = info && info.w > 0 && info.h > 0 ? ` width="${info.w}" height="${info.h}"` : '';
+  return `<img src="${escAttr(url)}" alt="${escAttr(alt)}"${dims} loading="lazy" decoding="async">`;
+}
+
 function inline(s: string, mdDir = '', prefix = ''): string {
   const stash: string[] = [];
   const hold = (htmlText: string): string => {
@@ -615,6 +706,9 @@ function inline(s: string, mdDir = '', prefix = ''): string {
   out = out.replace(/`([^`]+)`/g, (_m, c: string) => hold(`<code>${esc(c)}</code>`));
   // 图片（在链接之前处理，否则 ![..](..) 会被链接规则先吃掉）
   out = out.replace(RE_IMG, (_m, alt: string, src: string) => hold(imgTagFor(src, alt, mdDir, prefix)));
+  // Obsidian 式图片 ![[名称]]（| 后非纯数字时当作别名/图注）
+  out = out.replace(RE_WIKI, (_m, name: string, alias: string | undefined) =>
+    hold(imgTagForWiki(name, alias && !/^\d+(x\d+)?$/.test(alias) ? alias : '', mdDir, prefix)));
   // 链接 [文字](https://…)
   out = out.replace(
     /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
@@ -647,15 +741,20 @@ function isBlockStart(l: string): boolean {
 }
 
 const RE_IMG_ONLY = /^\s*!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"[^"]*")?\s*\)\s*$/;
+const RE_WIKI_ONLY = /^\s*!\[\[([^\]|]+?)(?:\|([^\]]*))?\]\]\s*$/;
 
-function parseImageOnly(line: string): { alt: string; src: string } | null {
+function parseImageOnly(line: string): { alt: string; src: string; wiki?: boolean } | null {
   const m = RE_IMG_ONLY.exec(line);
-  return m ? { alt: m[1], src: m[2] } : null;
+  if (m) return { alt: m[1], src: m[2] };
+  const w = RE_WIKI_ONLY.exec(line);
+  if (w) return { alt: w[2] && !/^\d+$/.test(w[2]) ? w[2] : '', src: w[1], wiki: true };
+  return null;
 }
 
-function renderFigure(im: { alt: string; src: string }, mdDir: string, prefix = ''): string {
+function renderFigure(im: { alt: string; src: string; wiki?: boolean }, mdDir: string, prefix = ''): string {
+  const img = im.wiki ? imgTagForWiki(im.src, im.alt, mdDir, prefix) : imgTagFor(im.src, im.alt, mdDir, prefix);
   const cap = captionOf(im.alt);
-  return `<figure>${imgTagFor(im.src, im.alt, mdDir, prefix)}${cap ? `<figcaption>${inline(cap, mdDir, prefix)}</figcaption>` : ''}</figure>`;
+  return `<figure>${img}${cap ? `<figcaption>${inline(cap, mdDir, prefix)}</figcaption>` : ''}</figure>`;
 }
 
 function readList(lines: string[], start: number, mdDir = '', prefix = ''): { html: string; next: number } {
@@ -773,12 +872,24 @@ function mdToHtml(md: string, mdDir: string, prefix = ''): string {
       buf.push(lines[i]);
       i++;
     }
-    const imgs = buf.filter((l) => l.trim()).map(parseImageOnly);
-    if (imgs.length > 0 && imgs.every((x) => x !== null)) {
-      for (const im of imgs) out.push(renderFigure(im as { alt: string; src: string }, mdDir, prefix));
-    } else {
-      out.push(`<p>${buf.map((l) => inline(l.trim(), mdDir, prefix)).join('\n')}</p>`);
+    // 独立成行的图片（标准 ![]() 或 Obsidian ![[]]）渲染成 figure，其余文字并成段落
+    let para: string[] = [];
+    const flushPara = (): void => {
+      if (para.length) {
+        out.push(`<p>${para.map((l) => inline(l.trim(), mdDir, prefix)).join('\n')}</p>`);
+        para = [];
+      }
+    };
+    for (const l of buf) {
+      const im = parseImageOnly(l);
+      if (im) {
+        flushPara();
+        out.push(renderFigure(im, mdDir, prefix));
+      } else {
+        para.push(l);
+      }
     }
+    flushPara();
   }
   return out.join('\n');
 }
@@ -799,7 +910,7 @@ const CSS = `
   --mark:rgba(234,179,8,.34);
   --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
-  --bar:56px;--side:296px;
+  --bar:56px;--side:clamp(230px,16vw,330px);
 }
 [data-theme=dark]{
   --bg:#1b1b1f;--bg-alt:#161618;--bg-elv:#202127;--bg-mute:#2b2b2f;
@@ -846,18 +957,40 @@ strong{font-weight:600;color:var(--t1)}
 
 main{max-width:840px;margin:0 auto;padding:26px 40px 140px}
 
-/* ── 首页：文章卡片（沿用原书的卡片组件；正文一律留在文章页）── */
-.list{list-style:none;margin:6px 0 0;padding:0}
-.item{background:var(--bg-elv);border:1px solid var(--divider);border-radius:12px;
-  padding:16px 18px 14px;margin-bottom:12px}
-.ihead{display:flex;gap:10px;align-items:flex-start}
-.num{flex:none;min-width:24px;height:24px;padding:0 6px;border-radius:7px;background:var(--bg-mute);color:var(--t3);
-  font:600 12px/24px var(--font);text-align:center;font-variant-numeric:tabular-nums}
-.ihead h3{margin:0;font-size:16px;font-weight:600;line-height:1.5;letter-spacing:-.1px;overflow-wrap:anywhere}
-.ititle{color:var(--t1)}
+/* ── 首页：左侧栏（置顶 / 栏目 / 标签 / 统计；可收起（按钮记忆状态），窄屏自动隐藏）── */
+.side{position:sticky;top:var(--bar);flex:none;width:var(--side);height:calc(100vh - var(--bar));
+  overflow-y:auto;padding:18px 14px 80px 18px;background:var(--bg-alt);border-right:1px solid var(--divider)}
+[data-side="0"] .side,[data-side="0"] .toc{display:none}
+#side-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:32px;padding:0 8px;font-size:14px}
+.sblock{padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--divider)}
+.sblock:last-child{padding-bottom:0;margin-bottom:0;border-bottom:0}
+.side .gt{font-size:13px;font-weight:600;margin:0 0 6px;color:var(--t1)}
+.scat,.sitem{display:block;width:100%;padding:4px 6px;border:0;border-radius:6px;background:none;
+  font:inherit;font-size:12.5px;line-height:1.5;color:var(--t2);text-align:left;cursor:pointer;overflow-wrap:anywhere}
+.scat{display:flex;align-items:baseline;gap:6px}
+.scat:hover,.sitem:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
+.scat[aria-pressed=true]{background:var(--brand-soft);color:var(--brand-1)}
+.scat i,.tagbtn i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;margin-left:auto;font-size:11px}
+.stag{display:flex;flex-wrap:wrap;gap:5px}
+.tagbtn{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border:0;border-radius:999px;
+  background:var(--bg-mute);color:var(--t3);font:400 11.5px/1.6 var(--font);cursor:pointer}
+.tagbtn:hover{background:var(--brand-soft);color:var(--brand-1)}
+.sfoot{color:var(--t3);font-size:12px;line-height:1.8}
+
+/* ── 首页：文章列表（简洁条目：标题 / 一行摘要 / 一行元信息）── */
+.list{list-style:none;margin:0;padding:0}
+.item{padding:15px 2px 14px;border-bottom:1px solid var(--divider)}
+.item:last-child{border-bottom:0}
+.ititle{display:block;font-size:16.5px;font-weight:600;line-height:1.5;color:var(--t1);
+  letter-spacing:-.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ititle:hover{color:var(--brand-1);text-decoration:none}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0 34px}
-.iex{margin:8px 0 0 34px;font-size:13.5px;line-height:1.8;color:var(--t2);overflow-wrap:anywhere}
+.pin-badge{display:inline-block;margin-right:7px;padding:3px 7px;border-radius:999px;
+  background:var(--brand-soft);color:var(--brand-1);font:500 11px/1 var(--font);vertical-align:2px}
+.iex{margin:5px 0 0;font-size:13.5px;line-height:1.7;color:var(--t2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.imeta{margin-top:6px;font-size:12px;color:var(--t3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
 .tag{font:400 11px/1 var(--font);padding:4px 9px;border-radius:999px;background:var(--bg-mute);color:var(--t3)}
 .badge{font:500 11px/1 var(--font);padding:4px 9px;border-radius:999px;border:1px solid transparent}
 .gA{background:var(--green-soft);color:var(--green-1);border-color:var(--green-soft)}
@@ -896,7 +1029,7 @@ body.plain-only .fields,body.plain-only .src{display:none}
 .toc a:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
 .toc a.active{background:var(--brand-soft);color:var(--brand-1)}
 .toc a i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;min-width:16px;text-align:right}
-.shell>.article{flex:1;min-width:0}
+.shell>.article,.shell>main{flex:1;min-width:0}
 .article{max-width:760px}
 .article h1{font-size:26px;font-weight:600;line-height:1.45;margin:2px 0 10px;letter-spacing:-.2px;overflow-wrap:anywhere}
 .article .chips{margin:12px 0 22px}
@@ -953,6 +1086,8 @@ footer a{color:var(--t2)}
 
 @media (max-width:1080px){
   .toc{display:none}
+  .side{display:none}
+  #side-toggle{display:none}
   .jump{display:block}
 }
 @media (max-width:820px){
@@ -974,7 +1109,7 @@ footer a{color:var(--t2)}
   body.compact #theme{order:4}
   main{padding:16px 13px 110px}
   .article h1{font-size:22px}
-  .ihead h3{font-size:15px}
+  .ititle{font-size:15.5px}
   .pager{margin-top:28px}
   .pager a{max-width:100%}
   .plain{font-size:14.5px;padding:9px 12px}
@@ -982,8 +1117,7 @@ footer a{color:var(--t2)}
 }
 @media (max-width:520px){
   .bar h1 small,.bar .brand small{display:none}
-  .chips,.iex,.plain,.fields,.src,.body{margin-left:0}
-  .num{min-width:22px;height:22px;font-size:11px;line-height:22px}
+  .chips,.plain,.fields,.src,.body{margin-left:0}
 }
 /* 320-380px 的窄屏：按钮收紧，否则顶栏会被挤到多占一到两行 */
 @media (max-width:380px){
@@ -992,7 +1126,7 @@ footer a{color:var(--t2)}
   .jump{max-width:32vw}
 }
 @media print{
-  .bar,.toc,.jump,#top,#lb{display:none}
+  .bar,.toc,.side,.jump,#top,#lb{display:none}
   main{max-width:none;padding:0}
   .item{break-inside:avoid;border-color:#ccc}
   .body img{max-height:none}
@@ -1031,6 +1165,7 @@ function stripMd(md: string): string {
   t = t.replace(/```[\s\S]*?```/g, ' ');                  // 围栏代码块
   t = t.replace(/^\s{0,3}(?:[-*_]\s*){3,}$/gm, ' ');      // 分隔线
   t = t.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');            // 图片
+  t = t.replace(/!\[\[[^\]]*\]\]/g, ' ');            // Obsidian 式图片
   t = t.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');          // 链接只留文字
   t = t.replace(/`([^`]+)`/g, '$1');
   t = t.replace(/^\s{0,3}#{1,6}\s+/gm, '');               // 标题记号
@@ -1057,6 +1192,7 @@ function excerptOf(md: string, n = 100): string {
 /* ── 页面骨架 ── */
 
 const TOP_BTN = `<button id="top" title="回到顶部" aria-label="回到顶部">↑</button>`;
+const SIDE_BTN = `<button class="btn" id="side-toggle" title="收起侧栏" aria-label="收起或展开侧栏">«</button>`;
 const LIGHTBOX = `<div id="lb" role="dialog" aria-modal="true" aria-label="查看大图"><img alt=""></div>`;
 
 function pageHead(title: string, desc: string): string {
@@ -1067,7 +1203,9 @@ function pageHead(title: string, desc: string): string {
     `<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">` +
     `<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1b1b1f">` +
     `<meta name="description" content="${escAttr(desc)}">` +
-    `<title>${esc(title)}</title><style>${CSS}</style></head><body>`
+    `<title>${esc(title)}</title><style>${CSS}</style>` +
+    `<script>try{if(localStorage.getItem('blog-side')==='0')document.documentElement.setAttribute('data-side','0')}catch(e){}</script>` +
+    `</head><body>`
   );
 }
 
@@ -1084,14 +1222,21 @@ function chipsRow(p: PageRef): string {
   return `<div class="chips">${badge}${date}${tags}</div>`;
 }
 
-function renderListItem(p: PageRef, i: number): string {
-  const num = `<span class="num">${String(i + 1).padStart(2, '0')}</span>`;
+// 首页条目的元信息行：日期 · 栏目 · #标签（纯文本一行）
+function metaText(p: PageRef): string {
+  const bits = [p.entry.date, p.secLabel].filter(Boolean).map((x) => esc(x));
+  if (p.entry.tags.length) bits.push(p.entry.tags.map((t) => `#${esc(t)}`).join(' '));
+  return bits.join(' · ');
+}
+
+function renderListItem(p: PageRef): string {
+  const pin = p.entry.pinned ? `<span class="pin-badge">置顶</span>` : '';
   const ex = p.excerpt ? `<p class="iex">${esc(p.excerpt)}</p>` : '';
   return (
     `<li class="item" data-sec="${p.secIdx}">` +
-    `<div class="ihead">${num}<h3><a class="ititle" href="${escAttr(p.outName)}">${esc(p.entry.title)}</a></h3></div>` +
-    chipsRow(p) +
+    `<a class="ititle" href="${escAttr(p.outName)}">${pin}${esc(p.entry.title)}</a>` +
     ex +
+    `<div class="imeta">${metaText(p)}</div>` +
     `</li>`
   );
 }
@@ -1137,6 +1282,7 @@ function renderPostPage(pages: PageRef[], i: number, footer: string): string {
     : '';
   const bar =
     `<header class="bar"><a class="back" href="../${escAttr(basename(OUT_FILE))}">← 返回首页</a>` +
+    (hasToc ? SIDE_BTN : '') +
     `<div class="brand">${esc(SITE.name)}</div>` +
     jump +
     `<div class="spacer"></div><button class="btn" id="theme">明/暗</button></header>`;
@@ -1186,6 +1332,18 @@ function syncBar(){
 addEventListener('resize',syncBar);
 if(document.fonts&&document.fonts.ready) document.fonts.ready.then(syncBar);
 syncBar();
+/* 侧栏收起 / 展开：按钮在顶栏，状态记忆在 localStorage（每台设备各记各的） */
+const sideBtn=document.getElementById('side-toggle');
+function applySide(v){
+  document.documentElement.setAttribute('data-side',v);
+  try{localStorage.setItem('blog-side',v);}catch(e){}
+  if(sideBtn){sideBtn.textContent=v==='0'?'»':'«';sideBtn.title=v==='0'?'展开侧栏':'收起侧栏';}
+  syncBar();
+}
+if(sideBtn){
+  applySide(document.documentElement.getAttribute('data-side')==='0'?'0':'1');
+  sideBtn.onclick=()=>applySide(document.documentElement.getAttribute('data-side')==='0'?'1':'0');
+}
 /* 滚动状态：① 手机端顶栏收起 ② 回到顶部按钮出现。rAF 节流 + 迟滞区间 */
 let compact=false,ticking=false;
 function onScroll(){
@@ -1206,7 +1364,7 @@ const list=document.getElementById('list');
 const q=document.getElementById('q');
 const cnt=document.getElementById('cnt');
 const empty=document.getElementById('empty');
-const secBtns=[...document.querySelectorAll('.fsec')];
+const secBtns=[...document.querySelectorAll('.fsec,.scat')];
 let secMode=null;
 
 function clearMarks(root){
@@ -1260,19 +1418,21 @@ q.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(apply,90);}
 function setMode(mode){
   secMode=(mode==='all')?null:mode;
   secBtns.forEach(b=>{
-    const on=(b.id==='f-all')?(secMode===null):(b.getAttribute('data-sec')===secMode);
+    const ds=b.getAttribute('data-sec');
+    const on=(ds==='all')?(secMode===null):(ds===secMode);
     b.setAttribute('aria-pressed',String(on));
   });
   apply();
 }
-secBtns.forEach(b=>{ b.onclick=()=>setMode(b.id==='f-all'?'all':b.getAttribute('data-sec')); });
+secBtns.forEach(b=>{ b.onclick=()=>setMode(b.getAttribute('data-sec')); });
 document.addEventListener('keydown',e=>{
   if(e.key==='/'&&document.activeElement!==q&&!/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)){
     e.preventDefault();q.focus();
   }
   if(e.key==='Escape'&&document.activeElement===q){q.value='';apply();q.blur();}
 });
-setMode('all');`;
+setMode('all');
+document.querySelectorAll('.tagbtn').forEach(b=>{ b.onclick=()=>{ q.value=b.getAttribute('data-tag')||''; apply(); }; });`;
 
 // 文章页：点图放大（灯箱），点任意处 / Esc 关闭
 const JS_POST = `const lb=document.getElementById('lb');
@@ -1358,6 +1518,11 @@ function main(): void {
     return a.entry.file < b.entry.file ? -1 : a.entry.file > b.entry.file ? 1 : 0;
   });
 
+  // 首页列表：置顶文章排最前（组内保持时间序）；文章页前后导航仍按时间序
+  const listed = [...pages].sort((a, b) =>
+    a.entry.pinned === b.entry.pinned ? 0 : a.entry.pinned ? -1 : 1,
+  );
+
   // slug：由文件名 stem 生成，冲突时确定性追加 -2、-3
   const used = new Set<string>();
   for (const p of pages) {
@@ -1378,13 +1543,13 @@ function main(): void {
     SITE.description ||
     `${SITE.name}：${counts || '复盘记录与主题文章'}${latest ? `，最近更新 ${latest}` : ''}。`;
   const footer =
-    `<footer>${esc(SITE.name)}${counts ? `，共 ${total} 篇（${counts}）` : ''}${latest ? `，最近更新 ${latest}` : ''}。<br>` +
-    `静态多页站点，不引用任何外部资源（正文中的链接除外），可离线阅读。由 build.ts 生成。</footer>`;
+    `<footer>${esc(SITE.name)}${counts ? `，共 ${total} 篇（${counts}）` : ''}${latest ? `，最近更新 ${latest}` : ''}。</footer>`;
 
   const bar =
     `<header class="bar"><h1>${esc(SITE.name)}<small>${esc(small)}</small></h1>` +
+    SIDE_BTN +
     `<div class="spacer"></div>` +
-    `<button class="btn fsec" id="f-all">全部</button>` +
+    `<button class="btn fsec" id="f-all" data-sec="all">全部</button>` +
     nonEmpty
       .map((s) => `<button class="btn fsec" id="f-${s.idx}" data-sec="${s.idx}">${esc(s.label)}</button>`)
       .join('') +
@@ -1395,15 +1560,41 @@ function main(): void {
     `<span class="count" id="cnt">${total} / ${total} 篇</span>` +
     `<button class="btn" id="theme">明/暗</button></header>`;
 
+  // 首页左侧栏：置顶 / 栏目 / 标签 / 统计（窄屏隐藏；置顶文章同时在列表顶部带标记）
+  const pinned = pages.filter((p) => p.entry.pinned);
+  const tagCount = new Map<string, number>();
+  for (const pg of pages) for (const t of pg.entry.tags) tagCount.set(t, (tagCount.get(t) || 0) + 1);
+  const topTags = [...tagCount.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 20);
+  const sidebar =
+    `<aside class="side">` +
+    (pinned.length
+      ? `<div class="sblock"><div class="gt">置顶</div>` +
+        pinned.map((p) => `<a class="sitem" href="${escAttr(p.outName)}">${esc(p.entry.title)}</a>`).join('') +
+        `</div>`
+      : '') +
+    `<div class="sblock"><div class="gt">栏目</div>` +
+    `<button class="scat" data-sec="all">全部<i>${total}</i></button>` +
+    nonEmpty.map((s) => `<button class="scat" data-sec="${s.idx}">${esc(s.label)}<i>${s.entries.length}</i></button>`).join('') +
+    `</div>` +
+    (topTags.length
+      ? `<div class="sblock"><div class="gt">标签</div><div class="stag">` +
+        topTags.map(([t, n]) => `<button class="tagbtn" data-tag="${escAttr(t)}">#${esc(t)}<i>${n}</i></button>`).join('') +
+        `</div></div>`
+      : '') +
+    `<div class="sblock sfoot">共 ${total} 篇${latest ? ` · 最近更新 ${esc(latest)}` : ''}</div>` +
+    `</aside>`;
+
   const home =
     pageHead(SITE.name, desc) +
     bar +
-    `<main><ul class="list" id="list">${pages.map((p, i) => renderListItem(p, i)).join('\n')}</ul>` +
+    `<div class="shell">` +
+    sidebar +
+    `<main><ul class="list" id="list">${listed.map(renderListItem).join('\n')}</ul>` +
     (total > 0
       ? `<div class="empty hidden" id="empty">没有匹配的内容</div>`
       : `<div class="empty" id="empty">还没有内容：去 ${CONTENT_DIR}/ 里写第一篇吧</div>`) +
     footer +
-    `</main>` +
+    `</main></div>` +
     TOP_BTN +
     '<script>' +
     JS_BASE +
@@ -1418,10 +1609,28 @@ function main(): void {
     writeFileSync(join(PAGES_OUT, `${p.slug}.html`), renderPostPage(pages, i, footer), 'utf8');
   });
 
+  // 清理改过名 / 已删除文章留下的旧页面（只动文章目录根部的 .html）
+  const keepPages = new Set(pages.map((p) => `${p.slug}.html`));
+  let stale = 0;
+  try {
+    for (const f of readdirSync(PAGES_OUT)) {
+      if (!/\.html?$/i.test(f) || keepPages.has(f)) continue;
+      try {
+        rmSync(join(PAGES_OUT, f));
+        stale++;
+      } catch {
+        /* 忽略 */
+      }
+    }
+  } catch {
+    /* 文章目录不存在时忽略 */
+  }
+
   // ── 输出汇报 ──
   console.log(`栏目 ${nonEmpty.length} ｜ 共 ${total} 篇${counts ? ` ｜ ${counts}` : ''}`);
   console.log(`首页：${OUT_FILE}（${Buffer.byteLength(home, 'utf8')} 字节）`);
   console.log(`文章页：${pages.length} 个 → ${PAGES_OUT}/`);
+  if (stale) console.log(`清理 ${stale} 个过期页面（改过名或已删除的文章）`);
   if (img.stats.length) {
     const fresh = img.stats.filter((s) => !s.cached);
     const cachedN = img.stats.length - fresh.length;

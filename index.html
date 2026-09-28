@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1b1b1f"><meta name="description" content="12传说：复盘记录 3 篇、主题文章 2 篇，最近更新 2026-09-27。"><title>12传说</title><style>
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1b1b1f"><meta name="description" content="12传说：复盘记录 4 篇、主题文章 2 篇，最近更新 2026-09-28。"><title>12传说</title><style>
 *,*::before,*::after{box-sizing:border-box}
 :root{
   --bg:#ffffff;--bg-alt:#f6f6f7;--bg-elv:#ffffff;--bg-mute:#f1f1f2;
@@ -12,7 +12,7 @@
   --mark:rgba(234,179,8,.34);
   --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
-  --bar:56px;--side:296px;
+  --bar:56px;--side:clamp(230px,16vw,330px);
 }
 [data-theme=dark]{
   --bg:#1b1b1f;--bg-alt:#161618;--bg-elv:#202127;--bg-mute:#2b2b2f;
@@ -59,18 +59,40 @@ strong{font-weight:600;color:var(--t1)}
 
 main{max-width:840px;margin:0 auto;padding:26px 40px 140px}
 
-/* ── 首页：文章卡片（沿用原书的卡片组件；正文一律留在文章页）── */
-.list{list-style:none;margin:6px 0 0;padding:0}
-.item{background:var(--bg-elv);border:1px solid var(--divider);border-radius:12px;
-  padding:16px 18px 14px;margin-bottom:12px}
-.ihead{display:flex;gap:10px;align-items:flex-start}
-.num{flex:none;min-width:24px;height:24px;padding:0 6px;border-radius:7px;background:var(--bg-mute);color:var(--t3);
-  font:600 12px/24px var(--font);text-align:center;font-variant-numeric:tabular-nums}
-.ihead h3{margin:0;font-size:16px;font-weight:600;line-height:1.5;letter-spacing:-.1px;overflow-wrap:anywhere}
-.ititle{color:var(--t1)}
+/* ── 首页：左侧栏（置顶 / 栏目 / 标签 / 统计；可收起（按钮记忆状态），窄屏自动隐藏）── */
+.side{position:sticky;top:var(--bar);flex:none;width:var(--side);height:calc(100vh - var(--bar));
+  overflow-y:auto;padding:18px 14px 80px 18px;background:var(--bg-alt);border-right:1px solid var(--divider)}
+[data-side="0"] .side,[data-side="0"] .toc{display:none}
+#side-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:32px;padding:0 8px;font-size:14px}
+.sblock{padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--divider)}
+.sblock:last-child{padding-bottom:0;margin-bottom:0;border-bottom:0}
+.side .gt{font-size:13px;font-weight:600;margin:0 0 6px;color:var(--t1)}
+.scat,.sitem{display:block;width:100%;padding:4px 6px;border:0;border-radius:6px;background:none;
+  font:inherit;font-size:12.5px;line-height:1.5;color:var(--t2);text-align:left;cursor:pointer;overflow-wrap:anywhere}
+.scat{display:flex;align-items:baseline;gap:6px}
+.scat:hover,.sitem:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
+.scat[aria-pressed=true]{background:var(--brand-soft);color:var(--brand-1)}
+.scat i,.tagbtn i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;margin-left:auto;font-size:11px}
+.stag{display:flex;flex-wrap:wrap;gap:5px}
+.tagbtn{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border:0;border-radius:999px;
+  background:var(--bg-mute);color:var(--t3);font:400 11.5px/1.6 var(--font);cursor:pointer}
+.tagbtn:hover{background:var(--brand-soft);color:var(--brand-1)}
+.sfoot{color:var(--t3);font-size:12px;line-height:1.8}
+
+/* ── 首页：文章列表（简洁条目：标题 / 一行摘要 / 一行元信息）── */
+.list{list-style:none;margin:0;padding:0}
+.item{padding:15px 2px 14px;border-bottom:1px solid var(--divider)}
+.item:last-child{border-bottom:0}
+.ititle{display:block;font-size:16.5px;font-weight:600;line-height:1.5;color:var(--t1);
+  letter-spacing:-.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ititle:hover{color:var(--brand-1);text-decoration:none}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0 34px}
-.iex{margin:8px 0 0 34px;font-size:13.5px;line-height:1.8;color:var(--t2);overflow-wrap:anywhere}
+.pin-badge{display:inline-block;margin-right:7px;padding:3px 7px;border-radius:999px;
+  background:var(--brand-soft);color:var(--brand-1);font:500 11px/1 var(--font);vertical-align:2px}
+.iex{margin:5px 0 0;font-size:13.5px;line-height:1.7;color:var(--t2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.imeta{margin-top:6px;font-size:12px;color:var(--t3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
 .tag{font:400 11px/1 var(--font);padding:4px 9px;border-radius:999px;background:var(--bg-mute);color:var(--t3)}
 .badge{font:500 11px/1 var(--font);padding:4px 9px;border-radius:999px;border:1px solid transparent}
 .gA{background:var(--green-soft);color:var(--green-1);border-color:var(--green-soft)}
@@ -109,7 +131,7 @@ body.plain-only .fields,body.plain-only .src{display:none}
 .toc a:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
 .toc a.active{background:var(--brand-soft);color:var(--brand-1)}
 .toc a i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;min-width:16px;text-align:right}
-.shell>.article{flex:1;min-width:0}
+.shell>.article,.shell>main{flex:1;min-width:0}
 .article{max-width:760px}
 .article h1{font-size:26px;font-weight:600;line-height:1.45;margin:2px 0 10px;letter-spacing:-.2px;overflow-wrap:anywhere}
 .article .chips{margin:12px 0 22px}
@@ -166,6 +188,8 @@ footer a{color:var(--t2)}
 
 @media (max-width:1080px){
   .toc{display:none}
+  .side{display:none}
+  #side-toggle{display:none}
   .jump{display:block}
 }
 @media (max-width:820px){
@@ -187,7 +211,7 @@ footer a{color:var(--t2)}
   body.compact #theme{order:4}
   main{padding:16px 13px 110px}
   .article h1{font-size:22px}
-  .ihead h3{font-size:15px}
+  .ititle{font-size:15.5px}
   .pager{margin-top:28px}
   .pager a{max-width:100%}
   .plain{font-size:14.5px;padding:9px 12px}
@@ -195,8 +219,7 @@ footer a{color:var(--t2)}
 }
 @media (max-width:520px){
   .bar h1 small,.bar .brand small{display:none}
-  .chips,.iex,.plain,.fields,.src,.body{margin-left:0}
-  .num{min-width:22px;height:22px;font-size:11px;line-height:22px}
+  .chips,.plain,.fields,.src,.body{margin-left:0}
 }
 /* 320-380px 的窄屏：按钮收紧，否则顶栏会被挤到多占一到两行 */
 @media (max-width:380px){
@@ -205,7 +228,7 @@ footer a{color:var(--t2)}
   .jump{max-width:32vw}
 }
 @media print{
-  .bar,.toc,.jump,#top,#lb{display:none}
+  .bar,.toc,.side,.jump,#top,#lb{display:none}
   main{max-width:none;padding:0}
   .item{break-inside:avoid;border-color:#ccc}
   .body img{max-height:none}
@@ -213,11 +236,12 @@ footer a{color:var(--t2)}
   .src .sbody{display:block}
   body{font-size:11pt}
 }
-</style></head><body><header class="bar"><h1>12传说<small>共 5 篇</small></h1><div class="spacer"></div><button class="btn fsec" id="f-all">全部</button><button class="btn fsec" id="f-0" data-sec="0">复盘记录</button><button class="btn fsec" id="f-1" data-sec="1">主题文章</button><div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="q" type="search" placeholder="搜索标题、标签、摘要…" autocomplete="off"><kbd>/</kbd></div><span class="count" id="cnt">5 / 5 篇</span><button class="btn" id="theme">明/暗</button></header><main><ul class="list" id="list"><li class="item" data-sec="0"><div class="ihead"><span class="num">01</span><h3><a class="ititle" href="posts/2026-09-27-示例-带图的复盘.html">示例：带 K 线图的复盘</a></h3></div><div class="chips"><span class="badge r1">复盘记录</span><span class="tag">2026-09-27</span><span class="tag">#示例</span><span class="tag">#BTC</span><span class="tag">#图表</span></div><p class="iex">这篇示例演示图片怎么用——把截图拖进来就行，构建时会自动压缩。 上面这张是宽图（1920×1080）。构建后长边会压到 1600px 以内、转成 WebP， 体积通常能减掉八成以上；显示时自动限制高度…</p></li>
-<li class="item" data-sec="0"><div class="ihead"><span class="num">02</span><h3><a class="ititle" href="posts/2026-09-26-示例-BTC复盘.html">示例：BTC 4H 结构复盘</a></h3></div><div class="chips"><span class="badge r1">复盘记录</span><span class="tag">2026-09-26</span><span class="tag">#示例</span><span class="tag">#BTC</span><span class="tag">#4H</span></div><p class="iex">这是一条示例复盘，用来展示格式，你写完自己的内容后可以删掉。 文件名以 日期-标题.md 命名，日期会自动排进时间线。 今天做了什么 4H 一段扩张之后转入横盘，没有追 等回调后第一个 HL，小仓进场…</p></li>
-<li class="item" data-sec="0"><div class="ihead"><span class="num">03</span><h3><a class="ititle" href="posts/2026-09-24-示例-止损执行.html">示例：止损执行记录</a></h3></div><div class="chips"><span class="badge r1">复盘记录</span><span class="tag">2026-09-24</span><span class="tag">#示例</span><span class="tag">#止损</span></div><p class="iex">第二篇示例。只要文件名带日期，就会自动按时间倒序排在最上面。 记一笔 止损被扫，不代表判断错了 换错周期才是错：15M 的逻辑，就配 15M 的止损 不因为「怕被扫」把止损挪到 4H 代价是确定的，未…</p></li>
-<li class="item" data-sec="1"><div class="ihead"><span class="num">04</span><h3><a class="ititle" href="posts/示例-我的交易系统.html">示例：我的交易系统（模板）</a></h3></div><div class="chips"><span class="badge r0">主题文章</span><span class="tag">#示例</span><span class="tag">#系统</span></div><p class="iex">长文放这里。一个主题一个文件，写多长都行。 我做什么 只做一种事：在明确的趋势结构里，用小风险获得参与权，正确之后才扩大。 我不做什么 不在亏损仓上加仓 一笔也不行 不为追回机会做逆势交易 不因为「涨…</p></li>
-<li class="item" data-sec="1"><div class="ihead"><span class="num">05</span><h3><a class="ititle" href="posts/示例-这个博客写什么.html">示例：这个博客写什么</a></h3></div><div class="chips"><span class="badge r0">主题文章</span><span class="tag">#示例</span></div><p class="iex">这个博客放两类东西： 复盘记录 —— 每次交易后记一笔：做了什么，错在哪，对在哪 主题文章 —— 系统、规则、心理这些成篇的东西 写作流程： 在 posts/复盘记录/ 或 posts/主题文章/ 里…</p></li></ul><div class="empty hidden" id="empty">没有匹配的内容</div><footer>12传说，共 5 篇（复盘记录 3 篇、主题文章 2 篇），最近更新 2026-09-27。<br>静态多页站点，不引用任何外部资源（正文中的链接除外），可离线阅读。由 build.ts 生成。</footer></main><button id="top" title="回到顶部" aria-label="回到顶部">↑</button><script>const themeBtn=document.getElementById('theme');
+</style><script>try{if(localStorage.getItem('blog-side')==='0')document.documentElement.setAttribute('data-side','0')}catch(e){}</script></head><body><header class="bar"><h1>12传说<small>共 6 篇</small></h1><button class="btn" id="side-toggle" title="收起侧栏" aria-label="收起或展开侧栏">«</button><div class="spacer"></div><button class="btn fsec" id="f-all" data-sec="all">全部</button><button class="btn fsec" id="f-0" data-sec="0">复盘记录</button><button class="btn fsec" id="f-1" data-sec="1">主题文章</button><div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="q" type="search" placeholder="搜索标题、标签、摘要…" autocomplete="off"><kbd>/</kbd></div><span class="count" id="cnt">6 / 6 篇</span><button class="btn" id="theme">明/暗</button></header><div class="shell"><aside class="side"><div class="sblock"><div class="gt">置顶</div><a class="sitem" href="posts/我的交易系统.html">我的交易系统</a></div><div class="sblock"><div class="gt">栏目</div><button class="scat" data-sec="all">全部<i>6</i></button><button class="scat" data-sec="0">复盘记录<i>4</i></button><button class="scat" data-sec="1">主题文章<i>2</i></button></div><div class="sblock"><div class="gt">标签</div><div class="stag"><button class="tagbtn" data-tag="BTC">#BTC<i>3</i></button><button class="tagbtn" data-tag="1H">#1H<i>1</i></button><button class="tagbtn" data-tag="4H">#4H<i>1</i></button><button class="tagbtn" data-tag="关于">#关于<i>1</i></button><button class="tagbtn" data-tag="图表">#图表<i>1</i></button><button class="tagbtn" data-tag="止损">#止损<i>1</i></button><button class="tagbtn" data-tag="示例">#示例<i>1</i></button><button class="tagbtn" data-tag="系统">#系统<i>1</i></button></div></div><div class="sblock sfoot">共 6 篇 · 最近更新 2026-09-28</div></aside><main><ul class="list" id="list"><li class="item" data-sec="1"><a class="ititle" href="posts/我的交易系统.html"><span class="pin-badge">置顶</span>我的交易系统</a><p class="iex">我做什么 只做一种事：在明确的趋势结构里，用小风险获得参与权，正确之后才扩大。 识别震荡和趋势，1小时找收敛，4小时看动能方向，1日看位置。 我不做什么 不在亏损仓上加仓 一笔也不行 不为追回机会做逆…</p><div class="imeta">主题文章 · #系统</div></li>
+<li class="item" data-sec="0"><a class="ititle" href="posts/2026-9-28-回调下行开始.html">回调下行开始</a><p class="iex">行情一览 如下图是6万2上行的整体1小时K线图。 当前位置 如下图：从8万上来的冲顶两次以后的形成的1小时平台，目前下行到平台区间下沿。13:26 我的行动 早上如下15M图入场空单，入场以后就被快速…</p><div class="imeta">2026-09-28 · 复盘记录 · #BTC #1H</div></li>
+<li class="item" data-sec="0"><a class="ititle" href="posts/2026-09-27-示例-带图的复盘.html">带 K 线图的复盘</a><p class="iex">这篇示例演示图片怎么用——把截图拖进来就行，构建时会自动压缩。 上面这张是宽图（1920×1080）。构建后长边会压到 1600px 以内、转成 WebP， 体积通常能减掉八成以上；显示时自动限制高度…</p><div class="imeta">2026-09-27 · 复盘记录 · #BTC #图表</div></li>
+<li class="item" data-sec="0"><a class="ititle" href="posts/2026-09-26-示例-BTC复盘.html">BTC 4H 结构复盘</a><p class="iex">这是一条示例复盘，用来展示格式，你写完自己的内容后可以删掉。 文件名以 日期-标题.md 命名，日期会自动排进时间线。 今天做了什么 4H 一段扩张之后转入横盘，没有追 等回调后第一个 HL，小仓进场…</p><div class="imeta">2026-09-26 · 复盘记录 · #BTC #4H</div></li>
+<li class="item" data-sec="0"><a class="ititle" href="posts/2026-09-24-示例-止损执行.html">示例：止损执行记录</a><p class="iex">第二篇示例。只要文件名带日期，就会自动按时间倒序排在最上面。 记一笔 止损被扫，不代表判断错了 换错周期才是错：15M 的逻辑，就配 15M 的止损 不因为「怕被扫」把止损挪到 4H 代价是确定的，未…</p><div class="imeta">2026-09-24 · 复盘记录 · #示例 #止损</div></li>
+<li class="item" data-sec="1"><a class="ititle" href="posts/这个博客写什么.html">这个博客写什么</a><p class="iex">这个博客放两类东西： 复盘记录 —— 每次交易后记一笔：做了什么，错在哪，对在哪 主题文章 —— 系统、规则、心理这些成篇的东西 写作流程： 在 posts/复盘记录/ 或 posts/主题文章/ 里…</p><div class="imeta">主题文章 · #关于</div></li></ul><div class="empty hidden" id="empty">没有匹配的内容</div><footer>12传说，共 6 篇（复盘记录 4 篇、主题文章 2 篇），最近更新 2026-09-28。</footer></main></div><button id="top" title="回到顶部" aria-label="回到顶部">↑</button><script>const themeBtn=document.getElementById('theme');
 const topBtn=document.getElementById('top');
 const bar=document.querySelector('.bar');
 themeBtn.onclick=()=>{
@@ -241,6 +265,18 @@ function syncBar(){
 addEventListener('resize',syncBar);
 if(document.fonts&&document.fonts.ready) document.fonts.ready.then(syncBar);
 syncBar();
+/* 侧栏收起 / 展开：按钮在顶栏，状态记忆在 localStorage（每台设备各记各的） */
+const sideBtn=document.getElementById('side-toggle');
+function applySide(v){
+  document.documentElement.setAttribute('data-side',v);
+  try{localStorage.setItem('blog-side',v);}catch(e){}
+  if(sideBtn){sideBtn.textContent=v==='0'?'»':'«';sideBtn.title=v==='0'?'展开侧栏':'收起侧栏';}
+  syncBar();
+}
+if(sideBtn){
+  applySide(document.documentElement.getAttribute('data-side')==='0'?'0':'1');
+  sideBtn.onclick=()=>applySide(document.documentElement.getAttribute('data-side')==='0'?'1':'0');
+}
 /* 滚动状态：① 手机端顶栏收起 ② 回到顶部按钮出现。rAF 节流 + 迟滞区间 */
 let compact=false,ticking=false;
 function onScroll(){
@@ -258,7 +294,7 @@ const list=document.getElementById('list');
 const q=document.getElementById('q');
 const cnt=document.getElementById('cnt');
 const empty=document.getElementById('empty');
-const secBtns=[...document.querySelectorAll('.fsec')];
+const secBtns=[...document.querySelectorAll('.fsec,.scat')];
 let secMode=null;
 
 function clearMarks(root){
@@ -312,16 +348,18 @@ q.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(apply,90);}
 function setMode(mode){
   secMode=(mode==='all')?null:mode;
   secBtns.forEach(b=>{
-    const on=(b.id==='f-all')?(secMode===null):(b.getAttribute('data-sec')===secMode);
+    const ds=b.getAttribute('data-sec');
+    const on=(ds==='all')?(secMode===null):(ds===secMode);
     b.setAttribute('aria-pressed',String(on));
   });
   apply();
 }
-secBtns.forEach(b=>{ b.onclick=()=>setMode(b.id==='f-all'?'all':b.getAttribute('data-sec')); });
+secBtns.forEach(b=>{ b.onclick=()=>setMode(b.getAttribute('data-sec')); });
 document.addEventListener('keydown',e=>{
   if(e.key==='/'&&document.activeElement!==q&&!/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)){
     e.preventDefault();q.focus();
   }
   if(e.key==='Escape'&&document.activeElement===q){q.value='';apply();q.blur();}
 });
-setMode('all');</script></body></html>
+setMode('all');
+document.querySelectorAll('.tagbtn').forEach(b=>{ b.onclick=()=>{ q.value=b.getAttribute('data-tag')||''; apply(); }; });</script></body></html>
