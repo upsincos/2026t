@@ -7,6 +7,7 @@
  *   posts/<slug>.html  文章页：标题 + 元信息 + 正文（小节 ≥2 时带左侧目录）+ 「更新的一篇 / 更早的一篇」两个链接
  *   assets/            正文图片压缩后的成品
  * 首页只放简洁条目（标题 / 一行摘要 / 日期 · 栏目 · 标签），正文留在文章页；frontmatter 写 pin: true 可置顶。
+ * 列表超过 20 篇时出现「加载更多」，分批显示；筛选 / 搜索时自动回到第一批。
  *
  * 视觉沿用 cdyforever/how-to-live-better 那套阅读页：明暗主题、手机端自适应、
  * 可打印、图片压缩 + 懒加载 + 点击放大。零外部资源，断网可读。
@@ -987,7 +988,7 @@ const CSS = `
   --gray-1:#a4a8ae;--gray-soft:rgba(142,150,170,.16);
   --mark:rgba(234,179,8,.3);
 }
-html{scroll-behavior:smooth;scroll-padding-top:calc(var(--bar) + 14px)}
+html{scroll-behavior:smooth;scroll-padding-top:calc(var(--bar) + 14px);overflow-y:scroll}
 body{margin:0;background:var(--bg);color:var(--t1);font:15px/1.75 var(--font);
   -webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
 a{color:var(--brand-1);text-decoration:none}
@@ -1020,6 +1021,7 @@ strong{font-weight:600;color:var(--t1)}
   background:var(--bg-elv);color:var(--t2);font:500 12px/1 var(--font)}
 
 main{flex:1;min-width:0;padding:26px 40px 140px;max-width:940px}
+body>main{margin-left:auto;margin-right:auto}
 
 /* ── 首页：左侧栏（置顶 / 栏目 / 统计；可收起（按钮记忆状态），窄屏自动隐藏）── */
 .side{position:sticky;top:var(--bar);flex:none;width:var(--side);height:calc(100vh - var(--bar));
@@ -1038,7 +1040,6 @@ main{flex:1;min-width:0;padding:26px 40px 140px;max-width:940px}
 .scat[aria-pressed=true]{background:var(--brand-soft);color:var(--brand-1)}
 .scat i,.sitem i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;margin-left:auto;font-size:11px}
 .scat span,.sitem span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sfoot{color:var(--t3);font-size:12px;line-height:1.8}
 
 /* ── 首页：栏目标题栏（与原书 .sec-h 同款：22px 标题 + 2px 分隔线）── */
 .sec-h{display:flex;align-items:baseline;gap:12px;padding-bottom:10px;
@@ -1050,6 +1051,8 @@ main{flex:1;min-width:0;padding:26px 40px 140px;max-width:940px}
 .list{list-style:none;margin:0;padding:0}
 .item{padding:15px 2px 14px;border-bottom:1px solid var(--divider)}
 .item:last-child{border-bottom:0}
+.item.cut{display:none}
+#more{display:block;margin:20px auto 6px;height:34px;padding:0 18px;font-size:12.5px}
 .ititle{display:block;font-size:16px;font-weight:600;line-height:1.5;color:var(--t1);
   letter-spacing:-.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ititle:hover{color:var(--brand-1);text-decoration:none}
@@ -1090,6 +1093,7 @@ body.plain-only .fields,body.plain-only .src{display:none}
 
 /* ── 文章页（宽屏：左侧目录 + 正文，沿用原书的目录联动；窄屏目录收进顶栏下拉）── */
 .shell{display:flex;align-items:flex-start}
+[data-side="0"] .shell{justify-content:center}
 .toc{position:sticky;top:var(--bar);flex:none;width:var(--side);height:calc(100vh - var(--bar));
   overflow-y:auto;padding:18px 14px 80px 18px;background:var(--bg-alt);border-right:1px solid var(--divider)}
 .toc .gt{font-size:13px;font-weight:600;margin:0 0 6px;color:var(--t1);display:flex;justify-content:space-between;align-items:baseline}
@@ -1158,6 +1162,7 @@ footer a{color:var(--t2)}
   .toc{display:none}
   .side{display:none}
   #side-toggle{display:none}
+  .shell{justify-content:center}
   .jump{display:block}
 }
 @media (max-width:820px){
@@ -1433,7 +1438,10 @@ const q=document.getElementById('q');
 const cnt=document.getElementById('cnt');
 const empty=document.getElementById('empty');
 const secBtns=[...document.querySelectorAll('.fsec,.scat')];
+const moreBtn=document.getElementById('more');
+const PAGE=20;
 let secMode=null;
+let cap=PAGE;
 
 function clearMarks(root){
   const ms=[...root.querySelectorAll('mark')];
@@ -1471,12 +1479,19 @@ function apply(){
   const term=q.value.trim().toLowerCase();
   clearMarks(list);
   let shown=0;
+  const matched=[];
   items.forEach(it=>{
     let ok=(secMode===null||it.getAttribute('data-sec')===secMode);
     if(ok&&term&&it.textContent.toLowerCase().indexOf(term)<0) ok=false;
     it.classList.toggle('hidden',!ok);
-    if(ok) shown++;
+    if(ok){shown++;matched.push(it);}
   });
+  matched.forEach((it,i)=>it.classList.toggle('cut',i>=cap));
+  const rest=matched.length-cap;
+  if(moreBtn){
+    moreBtn.classList.toggle('hidden',rest<=0);
+    if(rest>0) moreBtn.textContent='加载更多（还有 '+rest+' 篇）';
+  }
   if(empty) empty.classList.toggle('hidden',shown>0);
   cnt.textContent=shown+' / '+items.length+' 篇';
   const sc=document.getElementById('sec-count');
@@ -1484,7 +1499,7 @@ function apply(){
   if(term) markAll(list,term);
 }
 let timer=null;
-q.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(apply,90);});
+q.addEventListener('input',()=>{cap=PAGE;clearTimeout(timer);timer=setTimeout(apply,90);});
 function setMode(mode){
   secMode=(mode==='all')?null:mode;
   secBtns.forEach(b=>{
@@ -1497,6 +1512,7 @@ function setMode(mode){
     const hit=secBtns.find(b=>b.getAttribute('data-sec')===(secMode===null?'all':secMode));
     st.textContent=(hit&&hit.getAttribute('data-label'))||'全部文章';
   }
+  cap=PAGE;
   apply();
 }
 secBtns.forEach(b=>{ b.onclick=()=>setMode(b.getAttribute('data-sec')); });
@@ -1506,7 +1522,8 @@ document.addEventListener('keydown',e=>{
   }
   if(e.key==='Escape'&&document.activeElement===q){q.value='';apply();q.blur();}
 });
-setMode('all');`;
+setMode('all');
+if(moreBtn) moreBtn.onclick=()=>{cap+=PAGE;apply();};`;
 
 // 文章页：点图放大（灯箱），点任意处 / Esc 关闭
 const JS_POST = `const lb=document.getElementById('lb');
@@ -1677,7 +1694,6 @@ function main(): void {
       )
       .join('') +
     `</div>` +
-    `<div class="sblock sfoot">共 ${total} 篇${latest ? ` · 最近更新 ${esc(latest)}` : ''}</div>` +
     `</aside>`;
 
   const home =
@@ -1688,6 +1704,7 @@ function main(): void {
     `<main><div class="sec-h"><h2 id="sec-title">全部文章</h2>` +
     `<span class="meta" id="sec-count">${total} 篇</span></div>` +
     `<ul class="list" id="list">${listed.map(renderListItem).join('\n')}</ul>` +
+    `<button id="more" class="btn hidden" type="button">加载更多</button>` +
     (total > 0
       ? `<div class="empty hidden" id="empty">没有匹配的内容</div>`
       : `<div class="empty" id="empty">还没有内容：去 ${CONTENT_DIR}/ 里写第一篇吧</div>`) +
