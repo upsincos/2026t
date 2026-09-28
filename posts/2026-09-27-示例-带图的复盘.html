@@ -169,7 +169,8 @@ footer a{color:var(--t2)}
 .body{margin:0;font-size:15px;line-height:1.8;color:var(--t1);overflow-wrap:anywhere}
 .body p{margin:0 0 10px}
 .body p:last-child{margin-bottom:2px}
-.body h4,.body h5,.body h6{margin:16px 0 8px;color:var(--t1);font-weight:600;line-height:1.5}
+.body h3,.body h4,.body h5,.body h6{margin:16px 0 8px;color:var(--t1);font-weight:600;line-height:1.5}
+.body h3{font-size:18px}
 .body h4{font-size:16px}
 .body h5{font-size:15px}
 .body h6{font-size:14px}
@@ -178,6 +179,27 @@ footer a{color:var(--t2)}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
 .body blockquote{margin:0 0 10px;padding:9px 13px;background:var(--brand-soft);border-left:3px solid var(--brand-1);border-radius:0 8px 8px 0;color:var(--t1)}
 .body blockquote p{margin:0}
+/* 提醒块（Obsidian callout：> [!warning] 标题）*/
+.body .co{margin:0 0 12px;padding:9px 13px;border-left:3px solid var(--gray-1);border-radius:0 8px 8px 0;background:var(--gray-soft);color:var(--t1)}
+.body .co .co-t{font-size:13px;font-weight:600;margin:0 0 4px}
+.body .co p{margin:0 0 5px}
+.body .co p:last-child{margin-bottom:0}
+.body .co-note{border-left-color:var(--brand-1);background:var(--brand-soft)}
+.body .co-note .co-t{color:var(--brand-1)}
+.body .co-tip{border-left-color:var(--green-1);background:var(--green-soft)}
+.body .co-tip .co-t{color:var(--green-1)}
+.body .co-warning{border-left-color:var(--yellow-1);background:var(--yellow-soft)}
+.body .co-warning .co-t{color:var(--yellow-1)}
+.body .co-danger{border-left-color:var(--red-1);background:var(--red-soft)}
+.body .co-danger .co-t{color:var(--red-1)}
+.body .co-question{border-left-color:var(--gray-1);background:var(--gray-soft)}
+.body .co-question .co-t{color:var(--gray-1)}
+/* 删除线与任务清单（Obsidian 常用格式）*/
+.body del{color:var(--t3)}
+.body li.task{list-style:none}
+.body li.task .box{display:inline-block;width:12px;height:12px;margin-right:7px;border:1.5px solid var(--t3);border-radius:4px;position:relative;top:2px}
+.body li.task.done .box{background:var(--brand-1);border-color:var(--brand-1)}
+.body li.task.done .box::after{content:"✓";position:absolute;left:1.5px;top:-2px;font-size:10px;line-height:1;color:#fff}
 .body code{font:12.5px/1.6 var(--mono);background:var(--bg-mute);border-radius:4px;padding:1px 5px}
 .body pre.code{margin:0 0 10px;padding:10px 13px;background:var(--bg-mute);border:1px solid var(--divider);border-radius:8px;overflow:auto}
 .body pre.code code{background:none;padding:0;font-size:12.5px;line-height:1.7}
@@ -253,8 +275,8 @@ footer a{color:var(--t2)}
 <figure><img src="../assets/phone-shot-c6a80b27.webp" alt="屏幕快照 2026-09-27 10.36.00" width="720" height="1560" loading="lazy" decoding="async"></figure>
 <p>第二张是手机截图那种长图。方括号里的文字如果看起来像文件名（比如上面这个），
 就不会显示图注；写成正常说明才会显示。</p>
-<h6 id="h-1">复盘</h6>
-<ul><li>图放大了看结构，就不会被 5 分钟 K 线的噪音牵走</li><li>点击图片可以放大看细节，按 Esc 或再点一下关掉</li></ul></div><nav class="pager"><a class="newer" href="2026-9-28-8万7后的回调下行.html"><small>更新的一篇</small><span>回调下行开始</span></a><a class="older" href="2026-09-26-示例-BTC复盘.html"><small>更早的一篇</small><span>BTC 4H 结构复盘</span></a></nav><footer>12传说，共 7 篇（记录 4 篇、文章 2 篇、几何 1 篇），最近更新 2026-09-28。</footer></main><div id="lb" role="dialog" aria-modal="true" aria-label="查看大图"><img alt=""></div><button id="top" title="回到顶部" aria-label="回到顶部">↑</button><script>const themeBtn=document.getElementById('theme');
+<h5 id="h-1">复盘</h5>
+<ul><li>图放大了看结构，就不会被 5 分钟 K 线的噪音牵走</li><li>点击图片可以放大看细节，按 Esc 或再点一下关掉</li></ul></div><nav class="pager"><a class="newer" href="2026-9-28-8万7后的回调下行.html"><small>更新的一篇</small><span>8万7后的回调下行</span></a><a class="older" href="2026-09-26-示例-BTC复盘.html"><small>更早的一篇</small><span>BTC 4H 结构复盘</span></a></nav><footer>12传说，共 7 篇（记录 4 篇、文章 2 篇、几何 1 篇），最近更新 2026-09-28。</footer></main><div id="lb" role="dialog" aria-modal="true" aria-label="查看大图"><img alt=""></div><button id="top" title="回到顶部" aria-label="回到顶部">↑</button><script>const themeBtn=document.getElementById('theme');
 const topBtn=document.getElementById('top');
 const bar=document.querySelector('.bar');
 themeBtn.onclick=()=>{
@@ -324,7 +346,7 @@ if(lb){
 const tocLinks=[...document.querySelectorAll('.toc a')];
 const jumpSel=document.getElementById('jump');
 if(tocLinks.length){
-  const heads=[...document.querySelectorAll('.body h4[id],.body h5[id],.body h6[id]')];
+  const heads=[...document.querySelectorAll('.body h3[id],.body h4[id],.body h5[id],.body h6[id]')];
   const io=new IntersectionObserver(es=>{
     es.forEach(e=>{ if(e.isIntersecting){
       const id=e.target.id;

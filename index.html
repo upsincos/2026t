@@ -169,7 +169,8 @@ footer a{color:var(--t2)}
 .body{margin:0;font-size:15px;line-height:1.8;color:var(--t1);overflow-wrap:anywhere}
 .body p{margin:0 0 10px}
 .body p:last-child{margin-bottom:2px}
-.body h4,.body h5,.body h6{margin:16px 0 8px;color:var(--t1);font-weight:600;line-height:1.5}
+.body h3,.body h4,.body h5,.body h6{margin:16px 0 8px;color:var(--t1);font-weight:600;line-height:1.5}
+.body h3{font-size:18px}
 .body h4{font-size:16px}
 .body h5{font-size:15px}
 .body h6{font-size:14px}
@@ -178,6 +179,27 @@ footer a{color:var(--t2)}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
 .body blockquote{margin:0 0 10px;padding:9px 13px;background:var(--brand-soft);border-left:3px solid var(--brand-1);border-radius:0 8px 8px 0;color:var(--t1)}
 .body blockquote p{margin:0}
+/* 提醒块（Obsidian callout：> [!warning] 标题）*/
+.body .co{margin:0 0 12px;padding:9px 13px;border-left:3px solid var(--gray-1);border-radius:0 8px 8px 0;background:var(--gray-soft);color:var(--t1)}
+.body .co .co-t{font-size:13px;font-weight:600;margin:0 0 4px}
+.body .co p{margin:0 0 5px}
+.body .co p:last-child{margin-bottom:0}
+.body .co-note{border-left-color:var(--brand-1);background:var(--brand-soft)}
+.body .co-note .co-t{color:var(--brand-1)}
+.body .co-tip{border-left-color:var(--green-1);background:var(--green-soft)}
+.body .co-tip .co-t{color:var(--green-1)}
+.body .co-warning{border-left-color:var(--yellow-1);background:var(--yellow-soft)}
+.body .co-warning .co-t{color:var(--yellow-1)}
+.body .co-danger{border-left-color:var(--red-1);background:var(--red-soft)}
+.body .co-danger .co-t{color:var(--red-1)}
+.body .co-question{border-left-color:var(--gray-1);background:var(--gray-soft)}
+.body .co-question .co-t{color:var(--gray-1)}
+/* 删除线与任务清单（Obsidian 常用格式）*/
+.body del{color:var(--t3)}
+.body li.task{list-style:none}
+.body li.task .box{display:inline-block;width:12px;height:12px;margin-right:7px;border:1.5px solid var(--t3);border-radius:4px;position:relative;top:2px}
+.body li.task.done .box{background:var(--brand-1);border-color:var(--brand-1)}
+.body li.task.done .box::after{content:"✓";position:absolute;left:1.5px;top:-2px;font-size:10px;line-height:1;color:#fff}
 .body code{font:12.5px/1.6 var(--mono);background:var(--bg-mute);border-radius:4px;padding:1px 5px}
 .body pre.code{margin:0 0 10px;padding:10px 13px;background:var(--bg-mute);border:1px solid var(--divider);border-radius:8px;overflow:auto}
 .body pre.code code{background:none;padding:0;font-size:12.5px;line-height:1.7}
@@ -247,7 +269,7 @@ footer a{color:var(--t2)}
   body{font-size:11pt}
 }
 </style><script>try{if(localStorage.getItem('blog-side')==='0')document.documentElement.setAttribute('data-side','0')}catch(e){}</script></head><body><header class="bar"><h1>12传说<small>共 7 篇</small></h1><button class="btn" id="side-toggle" title="收起侧栏" aria-label="收起或展开侧栏">«</button><div class="spacer"></div><button class="btn fsec" id="f-all" data-sec="all" data-label="全部文章">全部</button><button class="btn fsec" id="f-0" data-sec="0" data-label="记录">记录</button><button class="btn fsec" id="f-1" data-sec="1" data-label="文章">文章</button><button class="btn fsec" id="f-2" data-sec="2" data-label="几何">几何</button><div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="q" type="search" placeholder="搜索标题、标签、摘要…" autocomplete="off"><kbd>/</kbd></div><span class="count" id="cnt">7 / 7 篇</span><button class="btn" id="theme">明/暗</button></header><div class="shell"><aside class="side"><div class="sblock"><div class="gt">置顶</div><a class="sitem" href="posts/我的交易系统.html"><span>我的交易系统</span></a></div><div class="sblock"><div class="gt">栏目<small>7 篇</small></div><button class="scat" data-sec="all" data-label="全部文章"><span>全部</span><i>7</i></button><button class="scat" data-sec="0" data-label="记录"><span>记录</span><i>4</i></button><button class="scat" data-sec="1" data-label="文章"><span>文章</span><i>2</i></button><button class="scat" data-sec="2" data-label="几何"><span>几何</span><i>1</i></button></div></aside><main><div class="sec-h"><h2 id="sec-title">全部文章</h2><span class="meta" id="sec-count">7 篇</span></div><ul class="list" id="list"><li class="item" data-sec="1"><a class="ititle" href="posts/我的交易系统.html"><span class="pin-badge">置顶</span>我的交易系统</a><p class="iex">我做什么 只做一种事：在明确的趋势结构里，用小风险获得参与权，正确之后才扩大。 识别震荡和趋势，收敛，看动能方向，看位置。 我不做什么 不在亏损仓上加仓，一笔也不行 不为追回机会做逆势交易，比如你踏空…</p><div class="imeta"><span class="tag">文章</span> #系统</div></li>
-<li class="item" data-sec="0"><a class="ititle" href="posts/2026-9-28-8万7后的回调下行.html">回调下行开始</a><p class="iex">[!warning] 久赌必输 明白了为什么赌徒们的话：“这把赢了就不再赌了” 。 类推到这里就是我再左侧入场一次，只要赢了再也不左侧了 行情一览 如下图是6万2上行的整体1小时K线图。 当前位置 如…</p><div class="imeta"><span class="tag">记录</span> 2026-09-28 · #BTC #1H #4H</div></li>
+<li class="item" data-sec="0"><a class="ititle" href="posts/2026-9-28-8万7后的回调下行.html">8万7后的回调下行</a><p class="iex">久赌必输 明白了为什么赌徒们的话：“这把赢了就不再赌了” 。 类推到这里就是我再左侧入场一次，只要赢了再也不左侧了 行情一览 如下图是6万2上行的整体1小时K线图。 当前位置 如下图：从8万上来的冲顶…</p><div class="imeta"><span class="tag">记录</span> 2026-09-28 · #BTC #1H #4H</div></li>
 <li class="item" data-sec="0"><a class="ititle" href="posts/2026-09-27-示例-带图的复盘.html">带 K 线图的复盘</a><p class="iex">这篇示例演示图片怎么用——把截图拖进来就行，构建时会自动压缩。 上面这张是宽图（1920×1080）。构建后长边会压到 1600px 以内、转成 WebP， 体积通常能减掉八成以上；显示时自动限制高度…</p><div class="imeta"><span class="tag">记录</span> 2026-09-27 · #BTC #图表</div></li>
 <li class="item" data-sec="0"><a class="ititle" href="posts/2026-09-26-示例-BTC复盘.html">BTC 4H 结构复盘</a><p class="iex">这是一条示例复盘，用来展示格式，你写完自己的内容后可以删掉。 文件名以 日期-标题.md 命名，日期会自动排进时间线。 今天做了什么 4H 一段扩张之后转入横盘，没有追 等回调后第一个 HL，小仓进场…</p><div class="imeta"><span class="tag">记录</span> 2026-09-26 · #BTC #4H</div></li>
 <li class="item" data-sec="0"><a class="ititle" href="posts/2026-09-24-示例-止损执行.html">示例：止损执行记录</a><p class="iex">第二篇示例。只要文件名带日期，就会自动按时间倒序排在最上面。 记一笔 止损被扫，不代表判断错了 换错周期才是错：15M 的逻辑，就配 15M 的止损 不因为「怕被扫」把止损挪到 4H 代价是确定的，未…</p><div class="imeta"><span class="tag">记录</span> 2026-09-24 · #示例 #止损</div></li>

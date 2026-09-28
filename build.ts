@@ -791,6 +791,9 @@ function inline(s: string, mdDir = '', prefix = ''): string {
   // 粗体 / 斜体
   out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   out = out.replace(/(^|[^*])\*([^*\s][^*]*?)\*(?!\*)/g, '$1<em>$2</em>');
+  // 高亮 ==文本== 与删除线 ~~文本~~（Obsidian 语法）
+  out = out.replace(/==([^=]+)==/g, '<mark>$1</mark>');
+  out = out.replace(/~~([^~]+)~~/g, '<del>$1</del>');
   out = out.split('\\*').join('*').split('\\_').join('_');
   return out.replace(/\u0001(\d+)\u0001/g, (_m, i: string) => stash[Number(i)]);
 }
@@ -869,11 +872,30 @@ function readList(lines: string[], start: number, mdDir = '', prefix = ''): { ht
         }
       }
     }
-    html += `<li>${inline(it.text, mdDir, prefix)}`;
+    const task = it.type === 'ul' ? /^\[([ xX])\]\s+(.*)$/.exec(it.text) : null;
+    if (task) {
+      const done = task[1].toLowerCase() === 'x';
+      html += `<li class="task${done ? ' done' : ''}"><span class="box"></span><span>${inline(task[2], mdDir, prefix)}</span>`;
+    } else {
+      html += `<li>${inline(it.text, mdDir, prefix)}`;
+    }
   }
   while (stack.length) html += `</li></${stack.pop()}>`;
   return { html, next: i };
 }
+
+// Obsidian 提醒块（callout）类型表：type → [配色 kind, 无自定义标题时的默认文案]
+const CALLOUTS: Record<string, [string, string]> = {
+  note: ['note', '笔记'], abstract: ['note', '概要'], summary: ['note', '概要'],
+  todo: ['note', '待办'], info: ['note', '信息'], example: ['note', '示例'],
+  tip: ['tip', '提示'], hint: ['tip', '提示'], important: ['tip', '重要'],
+  success: ['tip', '成功'], check: ['tip', '完成'], done: ['tip', '完成'],
+  question: ['question', '问题'], help: ['question', '帮助'], faq: ['question', '常见问题'],
+  warning: ['warning', '警告'], caution: ['warning', '注意'], attention: ['warning', '注意'],
+  failure: ['danger', '失败'], fail: ['danger', '失败'], missing: ['danger', '缺失'],
+  danger: ['danger', '危险'], error: ['danger', '错误'], bug: ['danger', '缺陷'],
+  quote: ['quote', '引用'], cite: ['quote', '引用'],
+};
 
 function mdToHtml(md: string, mdDir: string, prefix = ''): string {
   const lines = md.replace(/\r\n?/g, '\n').split('\n');
@@ -900,10 +922,10 @@ function mdToHtml(md: string, mdDir: string, prefix = ''): string {
       out.push(`<pre class="code"><code${lang ? ` class="lang-${lang}"` : ''}>${esc(buf.join('\n'))}</code></pre>`);
       continue;
     }
-    // 标题：# → h4，## → h5，### → h6（带 #h-N 锚点，供文章目录联动）
+    // 标题：# → h3，## → h4，### → h5，#### → h6（带 #h-N 锚点，供文章目录联动）
     m = /^(#{1,4})\s+(.*)$/.exec(ln);
     if (m) {
-      const lvl = Math.min(m[1].length + 3, 6);
+      const lvl = Math.min(m[1].length + 2, 6);
       out.push(`<h${lvl} id="h-${++hIdx}">${inline(m[2].trim(), mdDir, prefix)}</h${lvl}>`);
       i++;
       continue;
@@ -921,7 +943,23 @@ function mdToHtml(md: string, mdDir: string, prefix = ''): string {
         buf.push(lines[i].replace(/^\s*>\s?/, ''));
         i++;
       }
-      out.push(`<blockquote>${buf.map((t) => `<p>${inline(t, mdDir, prefix)}</p>`).join('')}</blockquote>`);
+      const cm = /^\s*\[!([A-Za-z+-]+)\]\s*(.*)$/.exec(buf[0] ?? '');
+      const cbody = buf.slice(cm ? 1 : 0).filter((t) => t.trim() !== '');
+      if (cm) {
+        const type = cm[1].toLowerCase().replace(/[+-]$/, '');
+        const [kind, label] = CALLOUTS[type] ?? ['note', type];
+        const title = cm[2].trim();
+        out.push(
+          `<div class="co co-${kind}">` +
+            `<div class="co-t">${inline(title || label, mdDir, prefix)}</div>` +
+            cbody.map((t) => `<p>${inline(t, mdDir, prefix)}</p>`).join('') +
+            `</div>`,
+        );
+      } else {
+        out.push(
+          `<blockquote>${cbody.map((t) => `<p>${inline(t, mdDir, prefix)}</p>`).join('')}</blockquote>`,
+        );
+      }
       continue;
     }
     // 列表
@@ -1132,7 +1170,8 @@ footer a{color:var(--t2)}
 .body{margin:0;font-size:15px;line-height:1.8;color:var(--t1);overflow-wrap:anywhere}
 .body p{margin:0 0 10px}
 .body p:last-child{margin-bottom:2px}
-.body h4,.body h5,.body h6{margin:16px 0 8px;color:var(--t1);font-weight:600;line-height:1.5}
+.body h3,.body h4,.body h5,.body h6{margin:16px 0 8px;color:var(--t1);font-weight:600;line-height:1.5}
+.body h3{font-size:18px}
 .body h4{font-size:16px}
 .body h5{font-size:15px}
 .body h6{font-size:14px}
@@ -1141,6 +1180,27 @@ footer a{color:var(--t2)}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
 .body blockquote{margin:0 0 10px;padding:9px 13px;background:var(--brand-soft);border-left:3px solid var(--brand-1);border-radius:0 8px 8px 0;color:var(--t1)}
 .body blockquote p{margin:0}
+/* 提醒块（Obsidian callout：> [!warning] 标题）*/
+.body .co{margin:0 0 12px;padding:9px 13px;border-left:3px solid var(--gray-1);border-radius:0 8px 8px 0;background:var(--gray-soft);color:var(--t1)}
+.body .co .co-t{font-size:13px;font-weight:600;margin:0 0 4px}
+.body .co p{margin:0 0 5px}
+.body .co p:last-child{margin-bottom:0}
+.body .co-note{border-left-color:var(--brand-1);background:var(--brand-soft)}
+.body .co-note .co-t{color:var(--brand-1)}
+.body .co-tip{border-left-color:var(--green-1);background:var(--green-soft)}
+.body .co-tip .co-t{color:var(--green-1)}
+.body .co-warning{border-left-color:var(--yellow-1);background:var(--yellow-soft)}
+.body .co-warning .co-t{color:var(--yellow-1)}
+.body .co-danger{border-left-color:var(--red-1);background:var(--red-soft)}
+.body .co-danger .co-t{color:var(--red-1)}
+.body .co-question{border-left-color:var(--gray-1);background:var(--gray-soft)}
+.body .co-question .co-t{color:var(--gray-1)}
+/* 删除线与任务清单（Obsidian 常用格式）*/
+.body del{color:var(--t3)}
+.body li.task{list-style:none}
+.body li.task .box{display:inline-block;width:12px;height:12px;margin-right:7px;border:1.5px solid var(--t3);border-radius:4px;position:relative;top:2px}
+.body li.task.done .box{background:var(--brand-1);border-color:var(--brand-1)}
+.body li.task.done .box::after{content:"✓";position:absolute;left:1.5px;top:-2px;font-size:10px;line-height:1;color:#fff}
 .body code{font:12.5px/1.6 var(--mono);background:var(--bg-mute);border-radius:4px;padding:1px 5px}
 .body pre.code{margin:0 0 10px;padding:10px 13px;background:var(--bg-mute);border:1px solid var(--divider);border-radius:8px;overflow:auto}
 .body pre.code code{background:none;padding:0;font-size:12.5px;line-height:1.7}
@@ -1241,6 +1301,9 @@ function stripMd(md: string): string {
   t = t.replace(/^\s{0,3}(?:[-*_]\s*){3,}$/gm, ' ');      // 分隔线
   t = t.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');            // 图片
   t = t.replace(/!\[\[[^\]]*\]\]/g, ' ');            // Obsidian 式图片
+  t = t.replace(/==([^=]+)==/g, '$1');                    // 高亮
+  t = t.replace(/~~([^~]+)~~/g, '$1');                    // 删除线
+  t = t.replace(/\[![A-Za-z+-]+\]/g, ' ');                // 提醒块记号
   t = t.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');          // 链接只留文字
   t = t.replace(/`([^`]+)`/g, '$1');
   t = t.replace(/^\s{0,3}#{1,6}\s+/gm, '');               // 标题记号
@@ -1336,7 +1399,7 @@ function renderPostPage(pages: PageRef[], i: number, footer: string): string {
   // 正文里的标题会带 #h-N 锚点；小节 ≥2 时：宽屏出左侧目录、窄屏出顶栏跳转下拉
   const bodyHtml = mdToHtml(p.entry.body, p.entry.dir, PAGE_PREFIX);
   const heads: { id: string; text: string }[] = [];
-  const hre = /<h([456]) id="(h-\d+)">([\s\S]*?)<\/h\1>/g;
+  const hre = /<h([3-6]) id="(h-\d+)">([\s\S]*?)<\/h\1>/g;
   let hm = hre.exec(bodyHtml);
   while (hm) {
     heads.push({ id: hm[2], text: stripTags(hm[3]) });
@@ -1548,7 +1611,7 @@ if(lb){
 const tocLinks=[...document.querySelectorAll('.toc a')];
 const jumpSel=document.getElementById('jump');
 if(tocLinks.length){
-  const heads=[...document.querySelectorAll('.body h4[id],.body h5[id],.body h6[id]')];
+  const heads=[...document.querySelectorAll('.body h3[id],.body h4[id],.body h5[id],.body h6[id]')];
   const io=new IntersectionObserver(es=>{
     es.forEach(e=>{ if(e.isIntersecting){
       const id=e.target.id;
