@@ -1,0 +1,50 @@
+name: rebuild
+
+# 每次改动 posts/ 里的内容（含图片），自动重新生成首页、文章页和 assets 并提交。
+# 也可以去 Actions 页面手动触发。
+on:
+  push:
+    paths:
+      - 'posts/**'
+      - 'build.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rebuild
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    # 机器人自己那次「重新生成」的提交不再触发一遍，避免空转
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install image tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq webp
+
+      - name: Build pages
+        run: node build.ts
+
+      - name: Commit if changed
+        run: |
+          set -e
+          git add -A index.html
+          git add -A posts
+          if [ -d assets ]; then git add -A assets; fi
+          if git diff --cached --quiet; then
+            echo "内容没变，页面无需更新"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: 重新生成页面"
+          git push

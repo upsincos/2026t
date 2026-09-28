@@ -1,0 +1,17 @@
+{
+  "name": "trading-blog",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "交易博客：Markdown 一键生成静态多页站点（图片自动压缩）",
+  "scripts": {
+    "build": "node build.ts",
+    "watch": "node build.ts --watch",
+    "open": "node build.ts && open index.html",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.0"
+  }
+}
