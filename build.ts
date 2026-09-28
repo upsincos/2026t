@@ -1138,6 +1138,8 @@ body.plain-only .fields,body.plain-only .src{display:none}
 .toc .gt small{font-weight:400;font-size:11px;color:var(--t3)}
 .toc a{display:flex;gap:6px;align-items:baseline;padding:3px 6px;border-radius:6px;font-size:12.5px;
   line-height:1.5;color:var(--t2)}
+.toc a.lv2{padding-left:20px}
+.toc a.lv3{padding-left:34px}
 .toc a:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
 .toc a.active{background:var(--brand-soft);color:var(--brand-1)}
 .toc a i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;min-width:16px;text-align:right}
@@ -1170,11 +1172,11 @@ footer a{color:var(--t2)}
 .body{margin:0;font-size:15px;line-height:1.8;color:var(--t1);overflow-wrap:anywhere}
 .body p{margin:0 0 10px}
 .body p:last-child{margin-bottom:2px}
-.body h3,.body h4,.body h5,.body h6{margin:20px 0 9px;color:var(--t1);font-weight:600;line-height:1.5}
-.body h3{font-size:22px;margin-top:26px}
-.body h4{font-size:20px;margin-top:24px}
-.body h5{font-size:17px;margin-top:20px}
-.body h6{font-size:14px;margin-top:16px;color:var(--t2)}
+.body h3,.body h4,.body h5,.body h6{color:var(--t1);font-weight:600;line-height:1.5}
+.body h3{font-size:18px;margin:30px 0 10px;letter-spacing:-.2px}
+.body h4{font-size:16.5px;margin:28px 0 12px;padding-bottom:7px;border-bottom:1px solid var(--divider)}
+.body h5{font-size:15px;margin:22px 0 8px}
+.body h6{font-size:13.5px;margin:18px 0 7px;font-weight:500;color:var(--t2)}
 .body ul,.body ol{margin:0 0 10px;padding-left:22px}
 .body li{margin:3px 0}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
@@ -1398,22 +1400,35 @@ function renderPostPage(pages: PageRef[], i: number, footer: string): string {
   }
   // 正文里的标题会带 #h-N 锚点；小节 ≥2 时：宽屏出左侧目录、窄屏出顶栏跳转下拉
   const bodyHtml = mdToHtml(p.entry.body, p.entry.dir, PAGE_PREFIX);
-  const heads: { id: string; text: string }[] = [];
+  const heads: { id: string; text: string; lvl: number }[] = [];
   const hre = /<h([3-6]) id="(h-\d+)">([\s\S]*?)<\/h\1>/g;
   let hm = hre.exec(bodyHtml);
   while (hm) {
-    heads.push({ id: hm[2], text: stripTags(hm[3]) });
+    heads.push({ id: hm[2], text: stripTags(hm[3]), lvl: Number(hm[1]) });
     hm = hre.exec(bodyHtml);
   }
   const hasToc = heads.length >= 2;
+  // 目录真实层级：栈式编号（1 / 1.1 / 1.1.1），回退自动重置
+  const tstack: { lvl: number; n: number }[] = [];
+  const tocItems = heads.map((h) => {
+    while (tstack.length && tstack[tstack.length - 1].lvl > h.lvl) tstack.pop();
+    if (tstack.length && tstack[tstack.length - 1].lvl === h.lvl) tstack[tstack.length - 1].n++;
+    else tstack.push({ lvl: h.lvl, n: 1 });
+    return { id: h.id, text: h.text, num: tstack.map((x) => x.n).join('.'), depth: tstack.length - 1 };
+  });
   const jump = hasToc
     ? `<select class="jump" id="jump" aria-label="跳转到某一节">` +
-      heads.map((h, n) => `<option value="${h.id}">${n + 1}. ${esc(h.text)}</option>`).join('') +
+      tocItems.map((h) => `<option value="${h.id}">${h.num} ${esc(h.text)}</option>`).join('') +
       `</select>`
     : '';
   const toc = hasToc
     ? `<aside class="toc"><div class="gt">本文目录<small>${heads.length} 节</small></div>` +
-      heads.map((h, n) => `<a href="#${h.id}"><i>${n + 1}</i><span>${esc(h.text)}</span></a>`).join('') +
+      tocItems
+        .map(
+          (h) =>
+            `<a class="lv${Math.min(h.depth + 1, 3)}" href="#${h.id}"><i>${h.num}</i><span>${esc(h.text)}</span></a>`,
+        )
+        .join('') +
       `</aside>`
     : '';
   const bar =
