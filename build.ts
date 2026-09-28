@@ -1170,11 +1170,11 @@ footer a{color:var(--t2)}
 .body{margin:0;font-size:15px;line-height:1.8;color:var(--t1);overflow-wrap:anywhere}
 .body p{margin:0 0 10px}
 .body p:last-child{margin-bottom:2px}
-.body h3,.body h4,.body h5,.body h6{margin:16px 0 8px;color:var(--t1);font-weight:600;line-height:1.5}
-.body h3{font-size:18px}
-.body h4{font-size:16px}
-.body h5{font-size:15px}
-.body h6{font-size:14px}
+.body h3,.body h4,.body h5,.body h6{margin:20px 0 9px;color:var(--t1);font-weight:600;line-height:1.5}
+.body h3{font-size:22px;margin-top:26px}
+.body h4{font-size:20px;margin-top:24px}
+.body h5{font-size:17px;margin-top:20px}
+.body h6{font-size:14px;margin-top:16px;color:var(--t2)}
 .body ul,.body ol{margin:0 0 10px;padding-left:22px}
 .body li{margin:3px 0}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
