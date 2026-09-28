@@ -3,7 +3,7 @@
  * 交易博客生成器：把 posts/ 里的 Markdown 渲染成一套静态多页 HTML 站点。
  *
  * 输出的是一套「真博客」，而不是一本一次加载完的单页书：
- *   index.html         首页：顶栏 + 左侧栏（置顶 / 栏目 / 标签 / 统计）+ 按时间倒序的简明文章列表
+ *   index.html         首页：顶栏 + 左侧栏（置顶 / 栏目 / 统计）+ 栏目标题 + 按时间倒序的简明文章列表
  *   posts/<slug>.html  文章页：标题 + 元信息 + 正文（小节 ≥2 时带左侧目录）+ 「更新的一篇 / 更早的一篇」两个链接
  *   assets/            正文图片压缩后的成品
  * 首页只放简洁条目（标题 / 一行摘要 / 日期 · 栏目 · 标签），正文留在文章页；frontmatter 写 pin: true 可置顶。
@@ -89,7 +89,7 @@ function printHelp(): void {
   node build.ts --allow-empty        # 确实要清空站点时才加（默认：没有文章却还有旧页面时中止，防误删）
 
 产物结构：
-  index.html          首页：顶栏 + 左侧栏（置顶 / 栏目 / 标签）+ 按时间倒序的简明文章列表
+  index.html          首页：顶栏 + 左侧栏（置顶 / 栏目）+ 栏目标题 + 按时间倒序的简明文章列表
   posts/<slug>.html   文章页：标题 + 元信息 + 正文（≥2 个小节带左侧目录）+ 「更新的一篇 / 更早的一篇」链接
   assets/             正文图片压缩后的成品（WebP、长边 ≤1600px）
 
@@ -1019,41 +1019,47 @@ strong{font-weight:600;color:var(--t1)}
 .jump{display:none;height:30px;max-width:38vw;padding:0 6px;border-radius:8px;border:1px solid var(--divider);
   background:var(--bg-elv);color:var(--t2);font:500 12px/1 var(--font)}
 
-main{max-width:840px;margin:0 auto;padding:26px 40px 140px}
+main{flex:1;min-width:0;padding:26px 40px 140px;max-width:940px}
 
-/* ── 首页：左侧栏（置顶 / 栏目 / 标签 / 统计；可收起（按钮记忆状态），窄屏自动隐藏）── */
+/* ── 首页：左侧栏（置顶 / 栏目 / 统计；可收起（按钮记忆状态），窄屏自动隐藏）── */
 .side{position:sticky;top:var(--bar);flex:none;width:var(--side);height:calc(100vh - var(--bar));
   overflow-y:auto;padding:18px 14px 80px 18px;background:var(--bg-alt);border-right:1px solid var(--divider)}
 [data-side="0"] .side,[data-side="0"] .toc{display:none}
 #side-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:32px;padding:0 8px;font-size:14px}
 .sblock{padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--divider)}
 .sblock:last-child{padding-bottom:0;margin-bottom:0;border-bottom:0}
-.side .gt{font-size:13px;font-weight:600;margin:0 0 6px;color:var(--t1)}
-.scat,.sitem{display:block;width:100%;padding:4px 6px;border:0;border-radius:6px;background:none;
-  font:inherit;font-size:12.5px;line-height:1.5;color:var(--t2);text-align:left;cursor:pointer;overflow-wrap:anywhere}
-.scat{display:flex;align-items:baseline;gap:6px}
+.side .gt{font-size:13px;font-weight:600;margin:0 0 6px;color:var(--t1);
+  display:flex;justify-content:space-between;align-items:baseline}
+.side .gt small{font-weight:400;font-size:11px;color:var(--t3);font-variant-numeric:tabular-nums}
+.scat,.sitem{display:flex;align-items:center;gap:7px;width:100%;padding:4px 6px;border:0;border-radius:6px;
+  background:none;font:inherit;font-size:12.5px;line-height:1.5;color:var(--t2);text-align:left;
+  cursor:pointer;overflow-wrap:anywhere}
 .scat:hover,.sitem:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
 .scat[aria-pressed=true]{background:var(--brand-soft);color:var(--brand-1)}
-.scat i,.tagbtn i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;margin-left:auto;font-size:11px}
-.stag{display:flex;flex-wrap:wrap;gap:5px}
-.tagbtn{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border:0;border-radius:999px;
-  background:var(--bg-mute);color:var(--t3);font:400 11.5px/1.6 var(--font);cursor:pointer}
-.tagbtn:hover{background:var(--brand-soft);color:var(--brand-1)}
+.scat i,.sitem i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;margin-left:auto;font-size:11px}
+.scat span,.sitem span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sfoot{color:var(--t3);font-size:12px;line-height:1.8}
+
+/* ── 首页：栏目标题栏（与原书 .sec-h 同款：22px 标题 + 2px 分隔线）── */
+.sec-h{display:flex;align-items:baseline;gap:12px;padding-bottom:10px;
+  border-bottom:2px solid var(--divider);margin:4px 0 2px}
+.sec-h h2{font-size:22px;font-weight:600;margin:0;letter-spacing:-.2px}
+.sec-h .meta{margin-left:auto;font-size:12px;color:var(--t3);font-variant-numeric:tabular-nums}
 
 /* ── 首页：文章列表（简洁条目：标题 / 一行摘要 / 一行元信息）── */
 .list{list-style:none;margin:0;padding:0}
 .item{padding:15px 2px 14px;border-bottom:1px solid var(--divider)}
 .item:last-child{border-bottom:0}
-.ititle{display:block;font-size:16.5px;font-weight:600;line-height:1.5;color:var(--t1);
+.ititle{display:block;font-size:16px;font-weight:600;line-height:1.5;color:var(--t1);
   letter-spacing:-.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ititle:hover{color:var(--brand-1);text-decoration:none}
-.pin-badge{display:inline-block;margin-right:7px;padding:3px 7px;border-radius:999px;
-  background:var(--brand-soft);color:var(--brand-1);font:500 11px/1 var(--font);vertical-align:2px}
+.pin-badge{display:inline-block;margin-right:7px;padding:4px 9px;border-radius:999px;
+  background:var(--bg-mute);color:var(--t3);font:400 11px/1 var(--font);vertical-align:2px}
 .iex{margin:5px 0 0;font-size:13.5px;line-height:1.7;color:var(--t2);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.imeta{margin-top:6px;font-size:12px;color:var(--t3);
+.imeta{margin-top:7px;font-size:12px;color:var(--t3);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.imeta .tag{margin-right:3px;vertical-align:1px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .tag{font:400 11px/1 var(--font);padding:4px 9px;border-radius:999px;background:var(--bg-mute);color:var(--t3)}
 .badge{font:500 11px/1 var(--font);padding:4px 9px;border-radius:999px;border:1px solid transparent}
@@ -1273,24 +1279,22 @@ function pageHead(title: string, desc: string): string {
   );
 }
 
-// 栏目徽标配色：第一个栏目绿、第二个蓝，其余灰（沿用原书的强调色系）
-function secBadgeClass(secIdx: number): string {
-  return secIdx === 0 ? 'r1' : secIdx === 1 ? 'r0' : 'r2';
-}
 
-// 元信息行：栏目徽标 + 日期 + 标签（沿用原书的 chips 组件）
+// 元信息行：栏目 + 日期 + 标签（统一原生标签样式）
 function chipsRow(p: PageRef): string {
-  const badge = `<span class="badge ${secBadgeClass(p.secIdx)}">${esc(p.secLabel)}</span>`;
+  const sec = `<span class="tag">${esc(p.secLabel)}</span>`;
   const date = p.entry.date ? `<span class="tag">${esc(p.entry.date)}</span>` : '';
   const tags = p.entry.tags.map((t) => `<span class="tag">#${esc(t)}</span>`).join('');
-  return `<div class="chips">${badge}${date}${tags}</div>`;
+  return `<div class="chips">${sec}${date}${tags}</div>`;
 }
 
-// 首页条目的元信息行：日期 · 栏目 · #标签（纯文本一行）
+// 首页条目的元信息行：栏目（原生标签样式）+ 日期 + #标签
 function metaText(p: PageRef): string {
-  const bits = [p.entry.date, p.secLabel].filter(Boolean).map((x) => esc(x));
+  const sec = `<span class="tag">${esc(p.secLabel)}</span>`;
+  const bits: string[] = [];
+  if (p.entry.date) bits.push(esc(p.entry.date));
   if (p.entry.tags.length) bits.push(p.entry.tags.map((t) => `#${esc(t)}`).join(' '));
-  return bits.join(' · ');
+  return sec + (bits.length ? ' ' + bits.join(' · ') : '');
 }
 
 function renderListItem(p: PageRef): string {
@@ -1475,6 +1479,8 @@ function apply(){
   });
   if(empty) empty.classList.toggle('hidden',shown>0);
   cnt.textContent=shown+' / '+items.length+' 篇';
+  const sc=document.getElementById('sec-count');
+  if(sc) sc.textContent=shown+' 篇';
   if(term) markAll(list,term);
 }
 let timer=null;
@@ -1486,6 +1492,11 @@ function setMode(mode){
     const on=(ds==='all')?(secMode===null):(ds===secMode);
     b.setAttribute('aria-pressed',String(on));
   });
+  const st=document.getElementById('sec-title');
+  if(st){
+    const hit=secBtns.find(b=>b.getAttribute('data-sec')===(secMode===null?'all':secMode));
+    st.textContent=(hit&&hit.getAttribute('data-label'))||'全部文章';
+  }
   apply();
 }
 secBtns.forEach(b=>{ b.onclick=()=>setMode(b.getAttribute('data-sec')); });
@@ -1495,8 +1506,7 @@ document.addEventListener('keydown',e=>{
   }
   if(e.key==='Escape'&&document.activeElement===q){q.value='';apply();q.blur();}
 });
-setMode('all');
-document.querySelectorAll('.tagbtn').forEach(b=>{ b.onclick=()=>{ q.value=b.getAttribute('data-tag')||''; apply(); }; });`;
+setMode('all');`;
 
 // 文章页：点图放大（灯箱），点任意处 / Esc 关闭
 const JS_POST = `const lb=document.getElementById('lb');
@@ -1633,9 +1643,12 @@ function main(): void {
     `<header class="bar"><h1>${esc(SITE.name)}<small>${esc(small)}</small></h1>` +
     SIDE_BTN +
     `<div class="spacer"></div>` +
-    `<button class="btn fsec" id="f-all" data-sec="all">全部</button>` +
+    `<button class="btn fsec" id="f-all" data-sec="all" data-label="全部文章">全部</button>` +
     nonEmpty
-      .map((s) => `<button class="btn fsec" id="f-${s.idx}" data-sec="${s.idx}">${esc(s.label)}</button>`)
+      .map(
+        (s) =>
+          `<button class="btn fsec" id="f-${s.idx}" data-sec="${s.idx}" data-label="${escAttr(s.label)}">${esc(s.label)}</button>`,
+      )
       .join('') +
     `<div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/>` +
     `<path d="M20 20l-3.5-3.5"/></svg>` +
@@ -1646,25 +1659,24 @@ function main(): void {
 
   // 首页左侧栏：置顶 / 栏目 / 标签 / 统计（窄屏隐藏；置顶文章同时在列表顶部带标记）
   const pinned = pages.filter((p) => p.entry.pinned);
-  const tagCount = new Map<string, number>();
-  for (const pg of pages) for (const t of pg.entry.tags) tagCount.set(t, (tagCount.get(t) || 0) + 1);
-  const topTags = [...tagCount.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 20);
   const sidebar =
     `<aside class="side">` +
     (pinned.length
       ? `<div class="sblock"><div class="gt">置顶</div>` +
-        pinned.map((p) => `<a class="sitem" href="${escAttr(p.outName)}">${esc(p.entry.title)}</a>`).join('') +
+        pinned
+          .map((p) => `<a class="sitem" href="${escAttr(p.outName)}"><span>${esc(p.entry.title)}</span></a>`)
+          .join('') +
         `</div>`
       : '') +
-    `<div class="sblock"><div class="gt">栏目</div>` +
-    `<button class="scat" data-sec="all">全部<i>${total}</i></button>` +
-    nonEmpty.map((s) => `<button class="scat" data-sec="${s.idx}">${esc(s.label)}<i>${s.entries.length}</i></button>`).join('') +
+    `<div class="sblock"><div class="gt">栏目<small>${total} 篇</small></div>` +
+    `<button class="scat" data-sec="all" data-label="全部文章"><span>全部</span><i>${total}</i></button>` +
+    nonEmpty
+      .map(
+        (s) =>
+          `<button class="scat" data-sec="${s.idx}" data-label="${escAttr(s.label)}"><span>${esc(s.label)}</span><i>${s.entries.length}</i></button>`,
+      )
+      .join('') +
     `</div>` +
-    (topTags.length
-      ? `<div class="sblock"><div class="gt">标签</div><div class="stag">` +
-        topTags.map(([t, n]) => `<button class="tagbtn" data-tag="${escAttr(t)}">#${esc(t)}<i>${n}</i></button>`).join('') +
-        `</div></div>`
-      : '') +
     `<div class="sblock sfoot">共 ${total} 篇${latest ? ` · 最近更新 ${esc(latest)}` : ''}</div>` +
     `</aside>`;
 
@@ -1673,7 +1685,9 @@ function main(): void {
     bar +
     `<div class="shell">` +
     sidebar +
-    `<main><ul class="list" id="list">${listed.map(renderListItem).join('\n')}</ul>` +
+    `<main><div class="sec-h"><h2 id="sec-title">全部文章</h2>` +
+    `<span class="meta" id="sec-count">${total} 篇</span></div>` +
+    `<ul class="list" id="list">${listed.map(renderListItem).join('\n')}</ul>` +
     (total > 0
       ? `<div class="empty hidden" id="empty">没有匹配的内容</div>`
       : `<div class="empty" id="empty">还没有内容：去 ${CONTENT_DIR}/ 里写第一篇吧</div>`) +
