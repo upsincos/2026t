@@ -16,12 +16,13 @@
  *   node build.ts -o dist/index.html   # 指定首页文件；站点根 = 该文件所在目录
  *   node build.ts --content ./posts    # 指定内容目录
  *   node build.ts --watch              # 监听内容目录，改动即重建（本地写作时用）
+ *   node build.ts --allow-empty        # 确认要清空站点时才用（默认：一篇都找不到但还有旧页面时会中止）
  *
  * 运行环境：Node.js ≥ 22.18（原生直跑 TypeScript，无需编译，零依赖）。
  *
  * 内容怎么放：
- *   posts/复盘记录/2026-09-26-标题.md    ← 文件名带日期，自动按时间倒序排
- *   posts/主题文章/任意标题.md
+ *   posts/记录/2026-09-26-标题.md    ← 文件夹名 = 栏目名，改名 / 新建都会自动生效
+ *   posts/文章/任意标题.md
  *   每个文件开头可写 frontmatter（title / date / tags 都可省略）：
  *   ---
  *   title: 标题
@@ -40,7 +41,7 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, watch, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -53,11 +54,9 @@ const SITE = {
   description: '',        // 搜索引擎描述；留空时自动生成
 };
 
-// 栏目：dir 是 posts 下的文件夹名，label 是显示名。要加栏目就加一行。
-const SECTIONS: { dir: string; label: string }[] = [
-  { dir: '复盘记录', label: '复盘记录' },
-  { dir: '主题文章', label: '主题文章' },
-];
+// 栏目 = posts/ 下的文件夹，自动识别：新建 / 改名 / 移动文件夹都会自动生效，不需要改这里。
+// 这个列表只控制「显示顺序」：先按这里的名字排，没列到的按名称排在后面。
+const SECTION_ORDER: string[] = ['记录', '文章', '几何'];
 
 // 图片处理
 const IMAGES = {
@@ -77,15 +76,17 @@ function die(msg: string): never {
 }
 
 function printHelp(): void {
-  console.log(`用法：node build.ts [-o 首页文件] [--content 内容目录] [--watch]
+  console.log(`用法：node build.ts [-o 首页文件] [--content 内容目录] [--watch] [--allow-empty]
 
 把 posts/ 里的 Markdown 渲染成一套静态多页 HTML 站点（首页列表 + 每篇一页）。
+栏目 = posts/ 下的文件夹（自动识别，改名 / 新建 / 移动都会自动跟随）。
 
 示例：
   node build.ts                      # 读取 ./posts，输出 ./index.html 与 ./posts/*.html
   node build.ts -o dist/index.html   # 站点根 = 首页文件所在目录（文章页与 assets/ 都在它下面）
   node build.ts --content ./posts
   node build.ts --watch              # 监听内容目录变化，自动重建（生成的 .html 不会触发）
+  node build.ts --allow-empty        # 确实要清空站点时才加（默认：没有文章却还有旧页面时中止，防误删）
 
 产物结构：
   index.html          首页：顶栏 + 左侧栏（置顶 / 栏目 / 标签）+ 按时间倒序的简明文章列表
@@ -99,6 +100,7 @@ const argv = process.argv.slice(2);
 let outArg: string | null = null;
 let contentArg: string | null = null;
 let watchMode = false;
+let allowEmpty = false;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '-o' || a === '--out') {
@@ -109,6 +111,8 @@ for (let i = 0; i < argv.length; i++) {
     contentArg = argv[++i];
   } else if (a === '-w' || a === '--watch') {
     watchMode = true;
+  } else if (a === '--allow-empty') {
+    allowEmpty = true;
   } else if (a === '-h' || a === '--help') {
     printHelp();
     process.exit(0);
@@ -194,17 +198,65 @@ function splitTags(v: string | undefined): string[] {
     .filter(Boolean);
 }
 
+// 递归收集一个目录下的全部 .md（跳过隐藏目录/文件），顺序固定（构建可复现）
+function listMdFiles(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (d: string): void => {
+    let items: string[] = [];
+    try {
+      items = readdirSync(d);
+    } catch {
+      return;
+    }
+    items.sort();
+    for (const it of items) {
+      if (it.startsWith('.')) continue;
+      const p = join(d, it);
+      try {
+        if (statSync(p).isDirectory()) walk(p);
+        else if (/\.md$/i.test(it)) out.push(p);
+      } catch {
+        /* 忽略 */
+      }
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+// 栏目 = posts/ 下包含 .md 的文件夹（含其子目录里的 md）。
+// 文件夹怎么改名 / 移动 / 新建都会自动生效，不需要改任何配置。
+function discoverSections(): { dir: string; label: string }[] {
+  let names: string[] = [];
+  try {
+    names = readdirSync(CONTENT, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+      .map((e) => e.name);
+  } catch {
+    die(`内容目录不存在或无法读取：${CONTENT}\n提示：posts/ 是否被改名或移走了？`);
+  }
+  // posts/ 根目录直接放的 md 不属于任何栏目——明确提示，避免“写完没显示”
+  const rootMd = readdirSync(CONTENT).filter((n) => /\.md$/i.test(n));
+  if (rootMd.length > 0) {
+    console.warn(
+      `提示：posts/ 根目录下的 ${rootMd.length} 个 md 不会被收录（${rootMd.join('、')}）；把它们放进栏目文件夹（如 posts/记录/）才会显示。`,
+    );
+  }
+  const dirs = names.filter((n) => listMdFiles(join(CONTENT, n)).length > 0);
+  const rank = (n: string): number => {
+    const i = SECTION_ORDER.indexOf(n);
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  dirs.sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0));
+  return dirs.map((n) => ({ dir: n, label: n }));
+}
+
+// 读取一个栏目（文件夹）下的全部文章
 function loadSection(sec: { dir: string; label: string }): Entry[] {
   const dir = join(CONTENT, sec.dir);
-  let names: string[];
-  try {
-    names = readdirSync(dir);
-  } catch {
-    return [];
-  }
   const entries: Entry[] = [];
-  for (const name of names.filter((n) => /\.md$/i.test(n)).sort()) {
-    const full = join(dir, name);
+  for (const full of listMdFiles(dir)) {
+    const name = basename(full);
     const raw = readFileSync(full, 'utf8');
     const { meta, body } = parseFrontmatter(raw);
     const stem = name.replace(/\.md$/i, '');
@@ -220,7 +272,7 @@ function loadSection(sec: { dir: string; label: string }): Entry[] {
     const tags = splitTags(meta['tags']);
     const pinVal = (meta['pin'] || '').trim().toLowerCase();
     const pinned = ['true', '1', 'yes', 'y', '是'].includes(pinVal);
-    entries.push({ title, date, tags, body, file: name, dir, relPath: join(sec.dir, name), pinned });
+    entries.push({ title, date, tags, body, file: name, dir: dirname(full), relPath: relative(CONTENT, full), pinned });
   }
   // 有日期的新的在前；无日期的排在后面，按文件名
   entries.sort((a, b) => {
@@ -276,7 +328,8 @@ function resolveImagePath(rawSrc: string, mdDir: string): string | null {
         return null;
       }
     }
-    const tries = [join(mdDir, p), join(CONTENT, p), join(HERE, p)];
+    // 同目录 → 同目录里的 images/ 子目录 → 内容根 → 仓库根
+    const tries = [join(mdDir, p), join(mdDir, 'images', p), join(CONTENT, p), join(HERE, p)];
     for (const t of tries) {
       try {
         if (statSync(t).isFile()) return t;
@@ -284,54 +337,65 @@ function resolveImagePath(rawSrc: string, mdDir: string): string | null {
         /* 下一个 */
       }
     }
-    return null;
+    // 兜底：只写了文件名（Obsidian / Typora 常见）→ 在内容目录里按文件名找唯一命中
+    if (!p.includes('/') && !p.includes('\\')) {
+      const hit = fileIndex().get(p);
+      if (hit) return hit;
+    }
+    return null
   };
   const res = compute();
   RESOLVE_CACHE.set(key, res);
   return res;
 }
 
-// Obsidian 式图片 ![[名称]]：先同目录、再 images/ 子目录、再内容根，最后按文件名全内容目录兜底
-const WIKI_FILES = new Map<string, string | null>();
+// 内容目录「文件名 → 绝对路径」索引（懒构建；重名时先到先得）。
+// 供只写文件名的引用兜底——Obsidian / Typora 常见写法：![](btc-4h.png)、![[btc-4h.png]]
+const FILE_INDEX = new Map<string, string>();
+let FILE_INDEX_READY = false;
+function fileIndex(): Map<string, string> {
+  if (!FILE_INDEX_READY) {
+    const walk = (d: string): void => {
+      let items: string[] = [];
+      try {
+        items = readdirSync(d);
+      } catch {
+        return;
+      }
+      for (const it of items) {
+        if (it.startsWith('.')) continue;
+        const p = join(d, it);
+        try {
+          if (statSync(p).isDirectory()) walk(p);
+          else if (!FILE_INDEX.has(it)) FILE_INDEX.set(it, p);
+        } catch {
+          /* 忽略 */
+        }
+      }
+    };
+    walk(CONTENT);
+    FILE_INDEX_READY = true;
+  }
+  return FILE_INDEX;
+}
+
 function resolveWikiImage(name: string, mdDir: string): string | null {
   const key = 'wiki\u0000' + name + '\u0000' + mdDir;
   const hit = RESOLVE_CACHE.get(key);
   if (hit !== undefined) return hit;
-  const compute = (): string | null => {
-    const tries = [join(mdDir, name), join(mdDir, 'images', name), join(CONTENT, name)];
-    for (const t of tries) {
-      try {
-        if (statSync(t).isFile()) return t;
-      } catch {
-        /* 下一个 */
+  let res: string | null = null;
+  const tries = [join(mdDir, name), join(mdDir, 'images', name), join(CONTENT, name)];
+  for (const t of tries) {
+    try {
+      if (statSync(t).isFile()) {
+        res = t;
+        break;
       }
+    } catch {
+      /* 下一个 */
     }
-    if (WIKI_FILES.size === 0) {
-      const walk = (d: string): void => {
-        let items: string[] = [];
-        try {
-          items = readdirSync(d);
-        } catch {
-          return;
-        }
-        for (const it of items) {
-          const p = join(d, it);
-          try {
-            if (statSync(p).isDirectory()) {
-              if (!it.startsWith('.')) walk(p);
-            } else if (!WIKI_FILES.has(it)) {
-              WIKI_FILES.set(it, p);
-            }
-          } catch {
-            /* 忽略 */
-          }
-        }
-      };
-      walk(CONTENT);
-    }
-    return WIKI_FILES.get(name) ?? null;
-  };
-  const res = compute();
+  }
+  if (!res) res = fileIndex().get(name) ?? null;
   RESOLVE_CACHE.set(key, res);
   return res;
 }
@@ -1475,14 +1539,27 @@ if(tocLinks.length){
 /* ═══════════════ 主流程 ═══════════════ */
 
 function main(): void {
-  const sections: Section[] = SECTIONS.map((s, idx) => ({ ...s, idx, entries: loadSection(s) }));
+  const sections: Section[] = discoverSections().map((s, idx) => ({ ...s, idx, entries: loadSection(s) }));
   const nonEmpty = sections.filter((s) => s.entries.length > 0);
-  for (const s of sections) {
-    if (s.entries.length === 0) {
-      console.warn(`提示：栏目「${s.label}」没有内容（${join(CONTENT, s.dir)} 为空或不存在），已跳过`);
-    }
-  }
   const total = nonEmpty.reduce((n, s) => n + s.entries.length, 0);
+
+  // 安全闸：一篇文章都没找到、但还有已生成的页面时，中止构建，避免把站点误清空。
+  //（典型场景：栏目文件夹被改名——旧逻辑会把它当成“文章都删了”，连生成的页面一起清掉。）
+  const existingPages = existsSync(PAGES_OUT)
+    ? readdirSync(PAGES_OUT).filter((f) => /\.html?$/i.test(f))
+    : [];
+  if (total === 0 && existingPages.length > 0 && !allowEmpty) {
+    const msg =
+      `没有找到任何文章（posts/ 下没有可用栏目，或栏目文件夹里没有 md）。\n` +
+      `但 posts/ 里还保留着 ${existingPages.length} 个已生成的页面——为避免误删站点，本次构建已中止，未改动任何文件。\n` +
+      `常见原因：栏目文件夹被改名 / 移动 / 清空；把内容放回原位再试。\n` +
+      `如果确实想要一个空站点，请加 --allow-empty 重新运行。`;
+    if (watchMode) {
+      console.error(msg);
+      return;
+    }
+    die(msg);
+  }
 
   // 图片：先收集所有引用 → 处理 → 再渲染
   IMG_INFOS.clear();
@@ -1522,6 +1599,13 @@ function main(): void {
   const listed = [...pages].sort((a, b) =>
     a.entry.pinned === b.entry.pinned ? 0 : a.entry.pinned ? -1 : 1,
   );
+
+  const undated = pages.filter((p) => !p.entry.date);
+  if (undated.length > 0) {
+    console.warn(
+      `提示：${undated.length} 篇文章没有日期，会排在列表最后（${undated.map((p) => p.entry.title).join('、')}）；想按日期排序就给文件名加日期前缀或在 frontmatter 里写 date。`,
+    );
+  }
 
   // slug：由文件名 stem 生成，冲突时确定性追加 -2、-3
   const used = new Set<string>();
