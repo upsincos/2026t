@@ -1078,9 +1078,28 @@ body>main{margin-left:auto;margin-right:auto}
   cursor:pointer;overflow-wrap:anywhere}
 .scat:hover,.sitem:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
 .scat[aria-pressed=true]{background:var(--brand-soft);color:var(--brand-1)}
-/* 标签筛选：折叠成下拉，不展开堆在侧栏里 */
-.tagsel{width:100%;height:30px;padding:0 6px;border-radius:8px;border:1px solid var(--divider);
-  background:var(--bg-elv);color:var(--t2);font:500 12.5px/1 var(--font);cursor:pointer}
+/* 标签筛选：自绘下拉（触发按钮 + 内嵌面板，与侧栏同一套设计语言） */
+.tagsd{position:relative}
+.tagsd-btn{display:flex;align-items:center;gap:7px;width:100%;height:30px;padding:0 10px;border-radius:8px;
+  border:1px solid var(--divider);background:var(--bg-elv);color:var(--t2);
+  font:500 12.5px/1 var(--font);cursor:pointer;text-align:left;transition:border-color .18s,color .18s}
+.tagsd-btn:hover{border-color:var(--brand-2);color:var(--t1)}
+.tagsd-btn:focus-visible{outline:2px solid var(--brand-soft);outline-offset:1px}
+.tagsd[data-open="1"] .tagsd-btn{border-color:var(--brand-1);color:var(--t1)}
+.tagsd-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tagsd-btn .caret{margin-left:auto;flex:none;width:11px;height:11px;fill:none;stroke:var(--t3);
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .18s}
+.tagsd[data-open="1"] .caret{transform:rotate(180deg)}
+.tagsd-panel{display:none;margin-top:6px;padding:4px;border:1px solid var(--divider);border-radius:10px;
+  background:var(--bg-elv);box-shadow:0 4px 16px rgba(0,0,0,.06);max-height:232px;overflow:auto}
+.tagsd[data-open="1"] .tagsd-panel{display:block;animation:tagsdIn .14s ease-out}
+@keyframes tagsdIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.tagsd-opt{display:flex;align-items:center;gap:6px;width:100%;padding:5px 8px;border:0;border-radius:6px;
+  background:none;font:inherit;font-size:12.5px;line-height:1.5;color:var(--t2);cursor:pointer;text-align:left;overflow-wrap:anywhere}
+.tagsd-opt:hover{background:var(--bg-alt);color:var(--t1)}
+.tagsd-opt.on{background:var(--brand-soft);color:var(--brand-1)}
+.tagsd-opt i{margin-left:auto;flex:none;font-style:normal;color:var(--t3);font-size:11px;font-variant-numeric:tabular-nums}
+.tagsd-opt.on i{color:var(--brand-1)}
 .scat i,.sitem i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;margin-left:auto;font-size:11px}
 .scat span,.sitem span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
@@ -1535,7 +1554,8 @@ const cnt=document.getElementById('cnt');
 const empty=document.getElementById('empty');
 const secBtns=[...document.querySelectorAll('.fsec,.scat')];
 const moreBtn=document.getElementById('more');
-const tagsel=document.getElementById('tagsel');
+const tagsd=document.getElementById('tagsd');
+let tagCur='';
 const PAGE=20;
 let secMode=null;
 let cap=PAGE;
@@ -1592,7 +1612,7 @@ function apply(){
   if(empty) empty.classList.toggle('hidden',shown>0);
   cnt.textContent=shown+' / '+items.length+' 篇';
   cnt.classList.toggle('hidden',!(term||secMode!==null));
-  if(tagsel&&!term&&tagsel.value) tagsel.value='';
+  if(tagsd) tagsdSync(term);
   const sc=document.getElementById('sec-count');
   if(sc) sc.textContent=shown+' 篇';
   if(term) markAll(list,term);
@@ -1623,7 +1643,35 @@ document.addEventListener('keydown',e=>{
 });
 setMode('all');
 if(moreBtn) moreBtn.onclick=()=>{cap+=PAGE;apply();};
-if(tagsel) tagsel.addEventListener('change',()=>{ q.value=tagsel.value?'#'+tagsel.value:''; cap=PAGE; apply(); });`;
+/* 标签下拉：点开/收起、选中、外点关闭、Esc 关闭；与搜索框双向同步 */
+function tagsdUI(t){
+  tagCur=t;
+  const lb=document.getElementById('tagsd-label');
+  if(lb) lb.textContent=t?'#'+t:'全部标签';
+  document.querySelectorAll('.tagsd-opt').forEach(o=>o.classList.toggle('on',(o.getAttribute('data-tag')||'')===t));
+}
+function tagsdOpen(v){
+  if(!tagsd) return;
+  tagsd.setAttribute('data-open',v?'1':'0');
+  const b=document.getElementById('tagsd-btn');
+  if(b) b.setAttribute('aria-expanded',v?'true':'false');
+}
+function tagsdSync(term){
+  if(!tagsd) return;
+  if((tagCur?'#'+tagCur:'').toLowerCase()!==term) tagsdUI('');
+}
+if(tagsd){
+  const btn=document.getElementById('tagsd-btn');
+  btn.addEventListener('click',e=>{e.stopPropagation();tagsdOpen(tagsd.getAttribute('data-open')!=='1');});
+  document.querySelectorAll('.tagsd-opt').forEach(o=>{
+    o.addEventListener('click',()=>{
+      const t=o.getAttribute('data-tag')||'';
+      tagsdUI(t); q.value=t?'#'+t:''; cap=PAGE; apply(); tagsdOpen(false);
+    });
+  });
+  document.addEventListener('click',e=>{ if(!tagsd.contains(e.target)) tagsdOpen(false); });
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&tagsd.getAttribute('data-open')==='1'){tagsdOpen(false);btn.focus();} });
+}`;
 
 // 文章页：点图放大（灯箱），点任意处 / Esc 关闭
 const JS_POST = `const lb=document.getElementById('lb');
@@ -1801,10 +1849,20 @@ function main(): void {
     `</div>` +
     (tagList.length
       ? `<div class="sblock"><div class="gt">标签</div>` +
-        `<select class="tagsel" id="tagsel" aria-label="按标签筛选">` +
-        `<option value="">全部标签</option>` +
-        tagList.map(([t, n]) => `<option value="${escAttr(t)}">${esc(t)}（${n}）</option>`).join('') +
-        `</select></div>`
+        `<div class="tagsd" id="tagsd">` +
+        `<button class="tagsd-btn" id="tagsd-btn" type="button" aria-haspopup="listbox" aria-expanded="false">` +
+        `<span class="tagsd-label" id="tagsd-label">全部标签</span>` +
+        `<svg class="caret" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>` +
+        `</button>` +
+        `<div class="tagsd-panel" role="listbox" aria-label="按标签筛选">` +
+        `<button class="tagsd-opt" type="button" role="option" data-tag="">全部标签<i>${total}</i></button>` +
+        tagList
+          .map(
+            ([t, n]) =>
+              `<button class="tagsd-opt" type="button" role="option" data-tag="${escAttr(t)}">#${esc(t)}<i>${n}</i></button>`,
+          )
+          .join('') +
+        `</div></div></div>`
       : '') +
     `</aside>`;
 
