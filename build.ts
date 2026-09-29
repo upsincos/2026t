@@ -1027,6 +1027,8 @@ const CSS = `
   --mark:rgba(234,179,8,.3);
 }
 html{scroll-behavior:smooth;scroll-padding-top:calc(var(--bar) + 14px);overflow-y:scroll}
+/* 打开文章 / 后退：支持的浏览器整页平滑过渡（不支持则照常瞬时切换，无副作用） */
+@view-transition{navigation:auto}
 body{margin:0;background:var(--bg);color:var(--t1);font:15px/1.75 var(--font);
   -webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
 a{color:var(--brand-1);text-decoration:none}
@@ -1042,7 +1044,7 @@ strong{font-weight:600;color:var(--t1)}
 .back{font-size:13px;color:var(--t2);white-space:nowrap}
 .back:hover{color:var(--brand-1);text-decoration:none}
 .spacer{flex:1}
-.search{position:relative;width:300px;max-width:42vw}
+.search{position:relative;width:260px;max-width:42vw}
 .search input{width:100%;height:34px;padding:0 30px 0 32px;border-radius:8px;border:1px solid var(--divider);
   background:var(--bg-alt);color:var(--t1);font:inherit;font-size:13px}
 .search input:focus{outline:0;border-color:var(--brand-1);background:var(--bg-elv)}
@@ -1051,7 +1053,7 @@ strong{font-weight:600;color:var(--t1)}
 .search kbd{position:absolute;right:8px;top:50%;transform:translateY(-50%);font:500 10px/1 var(--font);
   color:var(--t3);border:1px solid var(--divider);border-radius:4px;padding:2px 4px;background:var(--bg-elv)}
 .btn{height:30px;padding:0 11px;border-radius:999px;border:1px solid var(--divider);background:var(--bg-elv);
-  color:var(--t2);font:500 12px/1 var(--font);cursor:pointer;transition:all .18s;white-space:nowrap}
+  color:var(--t2);font:500 12px/1 var(--font);cursor:pointer;transition:border-color .18s,color .18s,background-color .18s;white-space:nowrap}
 .btn:hover{border-color:var(--brand-2);color:var(--t1)}
 .btn[aria-pressed=true]{background:var(--brand-soft);border-color:var(--brand-1);color:var(--brand-1)}
 /* 顶栏筛选按钮：宽屏隐藏（导航在左侧栏），≤1080 侧栏消失时才显示 */
@@ -1075,7 +1077,7 @@ body>main{margin-left:auto;margin-right:auto}
 .side .gt small{font-weight:400;font-size:11px;color:var(--t3);font-variant-numeric:tabular-nums}
 .scat,.sitem{display:flex;align-items:center;gap:7px;width:100%;padding:4px 6px;border:0;border-radius:6px;
   background:none;font:inherit;font-size:12.5px;line-height:1.5;color:var(--t2);text-align:left;
-  cursor:pointer;overflow-wrap:anywhere}
+  cursor:pointer;transition:background-color .15s,color .15s;overflow-wrap:anywhere}
 .scat:hover,.sitem:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
 .scat[aria-pressed=true]{background:var(--brand-soft);color:var(--brand-1)}
 /* 标签筛选：自绘下拉（触发按钮 + 内嵌面板，与侧栏同一套设计语言） */
@@ -1161,7 +1163,7 @@ body.plain-only .fields,body.plain-only .src{display:none}
 .toc .gt{font-size:13px;font-weight:600;margin:0 0 6px;color:var(--t1);display:flex;justify-content:space-between;align-items:baseline}
 .toc .gt small{font-weight:400;font-size:11px;color:var(--t3)}
 .toc a{display:flex;gap:6px;align-items:baseline;padding:3px 6px;border-radius:6px;font-size:12.5px;
-  line-height:1.5;color:var(--t2)}
+  line-height:1.5;color:var(--t2);transition:background-color .15s,color .15s}
 .toc a.lv2{padding-left:20px}
 .toc a.lv3{padding-left:34px}
 .toc a:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
@@ -1249,7 +1251,7 @@ footer a{color:var(--t2)}
 
 /* 宽屏（侧栏可见）：工具归右侧（搜索 + 明暗） */
 @media (min-width:1081px){
-  .search{margin-left:auto;width:clamp(260px,22vw,420px);max-width:none}
+  .search{margin-left:auto;width:clamp(240px,17vw,280px);max-width:none}
   #cnt:not(.hidden){margin-left:12px}
 }
 @media (max-width:1080px){
@@ -1517,20 +1519,33 @@ function syncBar(){
   const h=Math.round(bar.getBoundingClientRect().height);
   document.documentElement.style.setProperty('--bar', h+'px');
 }
-addEventListener('resize',syncBar);
+let resTick=0;
+addEventListener('resize',()=>{if(resTick)return;resTick=requestAnimationFrame(()=>{resTick=0;syncBar();});});
 if(document.fonts&&document.fonts.ready) document.fonts.ready.then(syncBar);
 syncBar();
-/* 侧栏收起 / 展开：按钮在顶栏，状态记忆在 localStorage（每台设备各记各的） */
+/* 侧栏收起 / 展开：按钮在顶栏，状态记忆在 localStorage（每台设备各记各的）。
+   点击时用 View Transition 平滑过渡；不支持或开了「减弱动态效果」的浏览器瞬时切换。 */
 const sideBtn=document.getElementById('side-toggle');
-function applySide(v){
-  document.documentElement.setAttribute('data-side',v);
-  try{localStorage.setItem('blog-side',v);}catch(e){}
-  if(sideBtn){sideBtn.textContent=v==='0'?'»':'«';sideBtn.title=v==='0'?'展开侧栏':'收起侧栏';}
-  syncBar();
+function applySide(v,animate){
+  const go=()=>{
+    document.documentElement.setAttribute('data-side',v);
+    try{localStorage.setItem('blog-side',v);}catch(e){}
+    if(sideBtn){sideBtn.textContent=v==='0'?'»':'«';sideBtn.title=v==='0'?'展开侧栏':'收起侧栏';}
+    syncBar();
+  };
+  if(animate){
+    try{
+      if(document.startViewTransition&&!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)){
+        document.startViewTransition(go);
+        return;
+      }
+    }catch(e){/* 落回瞬时切换 */}
+  }
+  go();
 }
 if(sideBtn){
-  applySide(document.documentElement.getAttribute('data-side')==='0'?'0':'1');
-  sideBtn.onclick=()=>applySide(document.documentElement.getAttribute('data-side')==='0'?'1':'0');
+  applySide(document.documentElement.getAttribute('data-side')==='0'?'0':'1',false);
+  sideBtn.onclick=()=>applySide(document.documentElement.getAttribute('data-side')==='0'?'1':'0',true);
 }
 /* 滚动状态：① 手机端顶栏收起 ② 回到顶部按钮出现。rAF 节流 + 迟滞区间 */
 let compact=false,ticking=false;
