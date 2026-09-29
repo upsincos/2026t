@@ -1063,7 +1063,7 @@ strong{font-weight:600;color:var(--t1)}
 main{flex:1;min-width:0;padding:26px 40px 140px;max-width:940px}
 body>main{margin-left:auto;margin-right:auto}
 
-/* ── 首页：左侧栏（置顶 / 栏目 / 统计；可收起（按钮记忆状态），窄屏自动隐藏）── */
+/* ── 首页：左侧栏（置顶 / 栏目 / 标签下拉；可收起（按钮记忆状态），窄屏自动隐藏）── */
 .side{position:sticky;top:var(--bar);flex:none;width:var(--side);height:calc(100vh - var(--bar));
   overflow-y:auto;padding:18px 14px 80px 18px;background:var(--bg-alt);border-right:1px solid var(--divider)}
 [data-side="0"] .side,[data-side="0"] .toc{display:none}
@@ -1078,6 +1078,9 @@ body>main{margin-left:auto;margin-right:auto}
   cursor:pointer;overflow-wrap:anywhere}
 .scat:hover,.sitem:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
 .scat[aria-pressed=true]{background:var(--brand-soft);color:var(--brand-1)}
+/* 标签筛选：折叠成下拉，不展开堆在侧栏里 */
+.tagsel{width:100%;height:30px;padding:0 6px;border-radius:8px;border:1px solid var(--divider);
+  background:var(--bg-elv);color:var(--t2);font:500 12.5px/1 var(--font);cursor:pointer}
 .scat i,.sitem i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;margin-left:auto;font-size:11px}
 .scat span,.sitem span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
@@ -1225,13 +1228,10 @@ footer a{color:var(--t2)}
 #lb.open{display:flex}
 #lb img{max-width:96vw;max-height:94vh;border-radius:8px;box-shadow:0 10px 44px rgba(0,0,0,.55)}
 
-/* 宽屏（侧栏可见）：工具最小化，搜索居中做视觉锚点，两端对称留白 */
+/* 宽屏（侧栏可见）：工具归右侧（搜索 + 明暗） */
 @media (min-width:1081px){
-  #theme{margin-left:auto}
-  #cnt:not(.hidden){margin-left:auto}
-  #cnt:not(.hidden) + #theme{margin-left:0}
-  .search{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    width:clamp(300px,24vw,420px);max-width:none}
+  .search{margin-left:auto;width:clamp(260px,22vw,420px);max-width:none}
+  #cnt:not(.hidden){margin-left:12px}
 }
 @media (max-width:1080px){
   .toc{display:none}
@@ -1535,6 +1535,7 @@ const cnt=document.getElementById('cnt');
 const empty=document.getElementById('empty');
 const secBtns=[...document.querySelectorAll('.fsec,.scat')];
 const moreBtn=document.getElementById('more');
+const tagsel=document.getElementById('tagsel');
 const PAGE=20;
 let secMode=null;
 let cap=PAGE;
@@ -1591,6 +1592,7 @@ function apply(){
   if(empty) empty.classList.toggle('hidden',shown>0);
   cnt.textContent=shown+' / '+items.length+' 篇';
   cnt.classList.toggle('hidden',!(term||secMode!==null));
+  if(tagsel&&!term&&tagsel.value) tagsel.value='';
   const sc=document.getElementById('sec-count');
   if(sc) sc.textContent=shown+' 篇';
   if(term) markAll(list,term);
@@ -1620,7 +1622,8 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&document.activeElement===q){q.value='';apply();q.blur();}
 });
 setMode('all');
-if(moreBtn) moreBtn.onclick=()=>{cap+=PAGE;apply();};`;
+if(moreBtn) moreBtn.onclick=()=>{cap+=PAGE;apply();};
+if(tagsel) tagsel.addEventListener('change',()=>{ q.value=tagsel.value?'#'+tagsel.value:''; cap=PAGE; apply(); });`;
 
 // 文章页：点图放大（灯箱），点任意处 / Esc 关闭
 const JS_POST = `const lb=document.getElementById('lb');
@@ -1775,6 +1778,9 @@ function main(): void {
 
   // 首页左侧栏：置顶 / 栏目 / 标签 / 统计（窄屏隐藏；置顶文章同时在列表顶部带标记）
   const pinned = pages.filter((p) => p.entry.pinned);
+  const tagCount = new Map<string, number>();
+  for (const pg of pages) for (const t of pg.entry.tags) tagCount.set(t, (tagCount.get(t) || 0) + 1);
+  const tagList = [...tagCount.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
   const sidebar =
     `<aside class="side">` +
     (pinned.length
@@ -1793,6 +1799,13 @@ function main(): void {
       )
       .join('') +
     `</div>` +
+    (tagList.length
+      ? `<div class="sblock"><div class="gt">标签</div>` +
+        `<select class="tagsel" id="tagsel" aria-label="按标签筛选">` +
+        `<option value="">全部标签</option>` +
+        tagList.map(([t, n]) => `<option value="${escAttr(t)}">${esc(t)}（${n}）</option>`).join('') +
+        `</select></div>`
+      : '') +
     `</aside>`;
 
   const home =
