@@ -1130,7 +1130,7 @@ body>main{margin-left:auto;margin-right:auto}
 body.plain-only .fields,body.plain-only .src{display:none}
 
 /* ── 文章页（宽屏：左侧目录 + 正文，沿用原书的目录联动；窄屏目录收进顶栏下拉）── */
-.shell{display:flex;align-items:flex-start}
+.shell{display:flex;align-items:flex-start;justify-content:center;max-width:calc(var(--side) + 940px);margin:0 auto}
 [data-side="0"] .shell{justify-content:center}
 .toc{position:sticky;top:var(--bar);flex:none;width:var(--side);height:calc(100vh - var(--bar));
   overflow-y:auto;padding:18px 14px 80px 18px;background:var(--bg-alt);border-right:1px solid var(--divider)}
@@ -1175,8 +1175,9 @@ footer a{color:var(--t2)}
 .body h3,.body h4,.body h5,.body h6{color:var(--t1);font-weight:600;line-height:1.5}
 .body h3{font-size:18px;margin:30px 0 10px;letter-spacing:-.2px}
 .body h4{font-size:16.5px;margin:28px 0 12px;padding-bottom:7px;border-bottom:1px solid var(--divider)}
-.body h5{font-size:15px;margin:22px 0 8px}
-.body h6{font-size:13.5px;margin:18px 0 7px;font-weight:500;color:var(--t2)}
+/* ### / ####：左侧竖条标记（灰条→浅条递减），一眼是小标题而不是正文加粗 */
+.body h5{font-size:16px;margin:24px 0 9px;padding-left:11px;border-left:3px solid var(--t3)}
+.body h6{font-size:14.5px;margin:20px 0 8px;padding-left:10px;border-left:3px solid var(--divider);color:var(--t2)}
 .body ul,.body ol{margin:0 0 10px;padding-left:22px}
 .body li{margin:3px 0}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
