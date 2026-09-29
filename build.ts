@@ -1042,7 +1042,7 @@ strong{font-weight:600;color:var(--t1)}
 .back{font-size:13px;color:var(--t2);white-space:nowrap}
 .back:hover{color:var(--brand-1);text-decoration:none}
 .spacer{flex:1}
-.search{position:relative;width:300px;max-width:42vw}
+.search{position:relative;flex:1;width:auto;max-width:560px;margin:0 auto}
 .search input{width:100%;height:34px;padding:0 30px 0 32px;border-radius:8px;border:1px solid var(--divider);
   background:var(--bg-alt);color:var(--t1);font:inherit;font-size:13px}
 .search input:focus{outline:0;border-color:var(--brand-1);background:var(--bg-elv)}
@@ -1054,6 +1054,8 @@ strong{font-weight:600;color:var(--t1)}
   color:var(--t2);font:500 12px/1 var(--font);cursor:pointer;transition:all .18s;white-space:nowrap}
 .btn:hover{border-color:var(--brand-2);color:var(--t1)}
 .btn[aria-pressed=true]{background:var(--brand-soft);border-color:var(--brand-1);color:var(--brand-1)}
+/* 顶栏筛选按钮：宽屏隐藏（导航在左侧栏），≤1080 侧栏消失时才显示 */
+.fsecs{display:none}
 .count{font-size:12px;color:var(--t3);white-space:nowrap;font-variant-numeric:tabular-nums}
 .jump{display:none;height:30px;max-width:38vw;padding:0 6px;border-radius:8px;border:1px solid var(--divider);
   background:var(--bg-elv);color:var(--t2);font:500 12px/1 var(--font)}
@@ -1173,11 +1175,11 @@ footer a{color:var(--t2)}
 .body p{margin:0 0 10px}
 .body p:last-child{margin-bottom:2px}
 .body h3,.body h4,.body h5,.body h6{color:var(--t1);font-weight:600;line-height:1.5}
-.body h3{font-size:18px;margin:30px 0 10px;letter-spacing:-.2px}
-.body h4{font-size:16.5px;margin:28px 0 12px;padding-bottom:7px;border-bottom:1px solid var(--divider)}
-/* ### / ####：左侧竖条标记（灰条→浅条递减），一眼是小标题而不是正文加粗 */
-.body h5{font-size:16px;margin:24px 0 9px;padding-left:11px;border-left:3px solid var(--t3)}
-.body h6{font-size:14.5px;margin:20px 0 8px;padding-left:10px;border-left:3px solid var(--divider);color:var(--t2)}
+/* #  · 裸标题（最大） */
+.body h3{font-size:19px;margin:32px 0 12px;letter-spacing:-.2px}
+.body h4{font-size:17px;margin:30px 0 12px;padding-bottom:7px;border-bottom:1px solid var(--divider)}
+.body h5{font-size:15.5px;margin:24px 0 9px;padding-left:10px;border-left:3px solid var(--t3)}
+.body h6{font-size:13.5px;margin:20px 0 8px;font-weight:600;color:var(--t2);letter-spacing:.3px}
 .body ul,.body ol{margin:0 0 10px;padding-left:22px}
 .body li{margin:3px 0}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
@@ -1236,9 +1238,10 @@ footer a{color:var(--t2)}
   .spacer{display:none}
   .jump{order:3}
   #theme{order:4}
+  .fsecs{display:contents}
   .fsec{order:5}
   .count{order:6;margin-left:auto}
-  .search{order:7;width:auto;max-width:none;flex:1 1 100%;margin-top:2px}
+  .search{order:7;width:auto;max-width:none;flex:1 1 100%;margin:2px 0 0}
   .search input{height:34px}
   .search kbd{display:none}
   /* 向下滚动后收成一行（标题+搜索+明暗），把竖向空间还给列表；滚回顶部再展开 */
@@ -1577,6 +1580,7 @@ function apply(){
   }
   if(empty) empty.classList.toggle('hidden',shown>0);
   cnt.textContent=shown+' / '+items.length+' 篇';
+  cnt.classList.toggle('hidden',!(term||secMode!==null));
   const sc=document.getElementById('sec-count');
   if(sc) sc.textContent=shown+' 篇';
   if(term) markAll(list,term);
@@ -1742,7 +1746,8 @@ function main(): void {
   const bar =
     `<header class="bar"><h1>${esc(SITE.name)}<small>${esc(small)}</small></h1>` +
     SIDE_BTN +
-    `<div class="spacer"></div>` +
+    // 栏目筛选：宽屏交给左侧栏，窄屏（侧栏隐藏）才在顶栏出现
+    `<span class="fsecs">` +
     `<button class="btn fsec" id="f-all" data-sec="all" data-label="全部文章">全部</button>` +
     nonEmpty
       .map(
@@ -1750,11 +1755,12 @@ function main(): void {
           `<button class="btn fsec" id="f-${s.idx}" data-sec="${s.idx}" data-label="${escAttr(s.label)}">${esc(s.label)}</button>`,
       )
       .join('') +
+    `</span>` +
     `<div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/>` +
     `<path d="M20 20l-3.5-3.5"/></svg>` +
     `<input id="q" type="search" placeholder="搜索标题、标签、摘要…" autocomplete="off">` +
     `<kbd>/</kbd></div>` +
-    `<span class="count" id="cnt">${total} / ${total} 篇</span>` +
+    `<span class="count hidden" id="cnt"></span>` +
     `<button class="btn" id="theme">明/暗</button></header>`;
 
   // 首页左侧栏：置顶 / 栏目 / 标签 / 统计（窄屏隐藏；置顶文章同时在列表顶部带标记）
