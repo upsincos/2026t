@@ -1130,7 +1130,7 @@ body>main{margin-left:auto;margin-right:auto}
 body.plain-only .fields,body.plain-only .src{display:none}
 
 /* ── 文章页（宽屏：左侧目录 + 正文，沿用原书的目录联动；窄屏目录收进顶栏下拉）── */
-.shell{display:flex;align-items:flex-start;justify-content:center;max-width:calc(var(--side) + 940px);margin:0 auto}
+.shell{display:flex;align-items:flex-start}
 [data-side="0"] .shell{justify-content:center}
 .toc{position:sticky;top:var(--bar);flex:none;width:var(--side);height:calc(100vh - var(--bar));
   overflow-y:auto;padding:18px 14px 80px 18px;background:var(--bg-alt);border-right:1px solid var(--divider)}
@@ -1262,6 +1262,10 @@ footer a{color:var(--t2)}
   .btn{padding:0 8px;font-size:11px}
   .bar h1,.bar .brand{flex:1 1 90px;font-size:13px}
   .jump{max-width:32vw}
+}
+/* 超宽屏（≥1900px，约 27" 以上）：正文列稍放宽，右侧留白比重更协调 */
+@media (min-width:1900px){
+  .article{max-width:840px}
 }
 @media print{
   .bar,.toc,.side,.jump,#top,#lb{display:none}
