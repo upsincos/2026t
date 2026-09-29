@@ -1042,7 +1042,7 @@ strong{font-weight:600;color:var(--t1)}
 .back{font-size:13px;color:var(--t2);white-space:nowrap}
 .back:hover{color:var(--brand-1);text-decoration:none}
 .spacer{flex:1}
-.search{position:relative;flex:1;width:auto;max-width:560px;margin:0 auto}
+.search{position:relative;width:300px;max-width:42vw}
 .search input{width:100%;height:34px;padding:0 30px 0 32px;border-radius:8px;border:1px solid var(--divider);
   background:var(--bg-alt);color:var(--t1);font:inherit;font-size:13px}
 .search input:focus{outline:0;border-color:var(--brand-1);background:var(--bg-elv)}
@@ -1178,8 +1178,10 @@ footer a{color:var(--t2)}
 /* #  · 裸标题（最大） */
 .body h3{font-size:19px;margin:32px 0 12px;letter-spacing:-.2px}
 .body h4{font-size:17px;margin:30px 0 12px;padding-bottom:7px;border-bottom:1px solid var(--divider)}
-.body h5{font-size:15.5px;margin:24px 0 9px;padding-left:10px;border-left:3px solid var(--t3)}
-.body h6{font-size:13.5px;margin:20px 0 8px;font-weight:600;color:var(--t2);letter-spacing:.3px}
+.body h5{font-size:16px;margin:24px 0 9px;padding-left:10px;border-left:3px solid var(--t3)}
+/* #### 用「前缀小方块」标记：与 ### 的左竖条互为不同的标记语言，加粗正文也一眼可辨 */
+.body h6{font-size:15px;margin:22px 0 8px;color:var(--t1);font-weight:600;padding-left:15px;position:relative}
+.body h6::before{content:"";position:absolute;left:1px;top:.5em;width:7px;height:7px;border-radius:2px;background:var(--t3)}
 .body ul,.body ol{margin:0 0 10px;padding-left:22px}
 .body li{margin:3px 0}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
@@ -1223,6 +1225,14 @@ footer a{color:var(--t2)}
 #lb.open{display:flex}
 #lb img{max-width:96vw;max-height:94vh;border-radius:8px;box-shadow:0 10px 44px rgba(0,0,0,.55)}
 
+/* 宽屏（侧栏可见）：工具最小化，搜索居中做视觉锚点，两端对称留白 */
+@media (min-width:1081px){
+  #theme{margin-left:auto}
+  #cnt:not(.hidden){margin-left:auto}
+  #cnt:not(.hidden) + #theme{margin-left:0}
+  .search{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:clamp(300px,24vw,420px);max-width:none}
+}
 @media (max-width:1080px){
   .toc{display:none}
   .side{display:none}
