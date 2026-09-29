@@ -1005,6 +1005,7 @@ const CSS = `
   --bg:#ffffff;--bg-alt:#f6f6f7;--bg-elv:#ffffff;--bg-mute:#f1f1f2;
   --divider:#e2e2e3;
   --t1:rgba(60,60,67,1);--t2:rgba(60,60,67,.78);--t3:rgba(60,60,67,.56);
+  --ink:#1e2029;
   --brand-1:#3451b2;--brand-2:#3a5ccc;--brand-soft:rgba(100,108,255,.12);
   --green-1:#18794e;--green-soft:rgba(16,185,129,.13);
   --yellow-1:#915930;--yellow-soft:rgba(234,179,8,.15);
@@ -1019,6 +1020,7 @@ const CSS = `
   --bg:#1b1b1f;--bg-alt:#161618;--bg-elv:#202127;--bg-mute:#2b2b2f;
   --divider:#2e2e32;
   --t1:rgba(255,255,245,.88);--t2:rgba(235,235,245,.62);--t3:rgba(235,235,245,.4);
+  --ink:rgba(255,255,255,.95);
   --brand-1:#a8b1ff;--brand-2:#c3c9ff;--brand-soft:rgba(100,108,255,.18);
   --green-1:#3dd68c;--green-soft:rgba(16,185,129,.16);
   --yellow-1:#f9b44e;--yellow-soft:rgba(234,179,8,.16);
@@ -1164,14 +1166,18 @@ body.plain-only .fields,body.plain-only .src{display:none}
 .toc .gt small{font-weight:400;font-size:11px;color:var(--t3)}
 .toc a{display:flex;gap:6px;align-items:baseline;padding:3px 6px;border-radius:6px;font-size:12.5px;
   line-height:1.5;color:var(--t2);transition:background-color .15s,color .15s}
+.toc a.lv1{font-weight:600;color:var(--t1)}
+.toc a.lv1 i{color:var(--brand-1)}
 .toc a.lv2{padding-left:20px}
 .toc a.lv3{padding-left:34px}
+.toc a.lv4{padding-left:46px}
 .toc a:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
 .toc a.active{background:var(--brand-soft);color:var(--brand-1)}
 .toc a i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;min-width:16px;text-align:right}
 .shell>.article,.shell>main{flex:1;min-width:0}
 .article{max-width:760px}
-.article h1{font-size:26px;font-weight:600;line-height:1.45;margin:2px 0 10px;letter-spacing:-.2px;overflow-wrap:anywhere}
+.article h1{font-size:26px;font-weight:600;line-height:1.45;margin:2px 0 10px;letter-spacing:-.2px;
+  color:var(--ink);overflow-wrap:anywhere}
 .article .chips{margin:12px 0 22px}
 .pager{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin:36px 0 0;
   border-top:1px solid var(--divider);padding-top:16px}
@@ -1198,14 +1204,26 @@ footer a{color:var(--t2)}
 .body{margin:0;font-size:15px;line-height:1.8;color:var(--t1);overflow-wrap:anywhere}
 .body p{margin:0 0 10px}
 .body p:last-child{margin-bottom:2px}
-.body h3,.body h4,.body h5,.body h6{color:var(--t1);font-weight:600;line-height:1.5}
-/* #  · 裸标题（最大） */
-.body h3{font-size:19px;margin:32px 0 12px;letter-spacing:-.2px}
-.body h4{font-size:17px;margin:30px 0 12px;padding-bottom:7px;border-bottom:1px solid var(--divider)}
-.body h5{font-size:16px;margin:24px 0 9px;padding-left:10px;border-left:3px solid var(--t3)}
-/* #### 用「前缀小方块」标记：与 ### 的左竖条互为不同的标记语言，加粗正文也一眼可辨 */
-.body h6{font-size:15px;margin:22px 0 8px;color:var(--t1);font-weight:600;padding-left:15px;position:relative}
-.body h6::before{content:"";position:absolute;left:1px;top:.5em;width:7px;height:7px;border-radius:2px;background:var(--t3)}
+/* 标题四级：标记形态（横线色块 → 底线色段 → 左竖条 → 前缀方块）与色深同时递进。
+   只靠字号+颜色区分会糊成一片，所以四级的「标记跨度」逐级收窄，色阶在同一支品牌蓝上逐级变浅。 */
+.body h3,.body h4,.body h5,.body h6{color:var(--ink);font-weight:600;line-height:1.5}
+/* #  · 章：顶部通栏细线 + 左端色块（全宽标记，最高层） */
+.body h3{font-size:20px;font-weight:650;margin:46px 0 14px;padding-top:15px;letter-spacing:-.3px;
+  position:relative;border-top:1px solid var(--divider)}
+.body h3::before{content:"";position:absolute;left:0;top:-2px;width:36px;height:3px;border-radius:2px;background:var(--brand-1)}
+/* ## · 节：底部细线 + 左端色段（半宽标记） */
+.body h4{font-size:17px;font-weight:640;margin:34px 0 12px;padding-bottom:8px;
+  position:relative;border-bottom:1px solid var(--divider)}
+.body h4::after{content:"";position:absolute;left:0;bottom:-1px;width:30px;height:2px;border-radius:2px;
+  background:var(--brand-1);opacity:.8}
+/* ### · 目：左侧竖条（局部标记） */
+.body h5{font-size:16px;margin:26px 0 9px;padding-left:11px;position:relative}
+.body h5::before{content:"";position:absolute;left:0;top:.3em;bottom:.3em;width:3px;border-radius:2px;
+  background:var(--brand-1);opacity:.55}
+/* #### · 点：前缀方块（最小标记，色最浅）；加粗正文没有方块，仍一眼可辨 */
+.body h6{font-size:15px;margin:22px 0 8px;color:var(--t2);font-weight:600;padding-left:16px;position:relative}
+.body h6::before{content:"";position:absolute;left:1px;top:.5em;width:7px;height:7px;border-radius:2px;
+  background:var(--brand-1);opacity:.34}
 .body ul,.body ol{margin:0 0 10px;padding-left:22px}
 .body li{margin:3px 0}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
@@ -1465,7 +1483,7 @@ function renderPostPage(pages: PageRef[], i: number, footer: string): string {
       tocItems
         .map(
           (h) =>
-            `<a class="lv${Math.min(h.depth + 1, 3)}" href="#${h.id}"><i>${h.num}</i><span>${esc(h.text)}</span></a>`,
+            `<a class="lv${Math.min(h.depth + 1, 4)}" href="#${h.id}"><i>${h.num}</i><span>${esc(h.text)}</span></a>`,
         )
         .join('') +
       `</aside>`
