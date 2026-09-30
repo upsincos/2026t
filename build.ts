@@ -1270,6 +1270,10 @@ footer a{color:var(--t2)}
 .body h6{font-size:15px;margin:22px 0 8px;color:var(--t2);font-weight:600;padding-left:16px;position:relative}
 .body h6::before{content:"";position:absolute;left:1px;top:.5em;width:7px;height:7px;border-radius:2px;
   background:var(--brand-1);opacity:.34}
+/* 从提要 / 目录点进来的落点：整行中性底 + 一道品牌色左耳，一眼能认出来。
+   纯 CSS（:target），不用脚本也不做动画，所以「减弱动态效果」下同样可见。 */
+.body h3:target,.body h4:target,.body h5:target,.body h6:target{
+  background:var(--bg-alt);border-radius:6px;box-shadow:inset 3px 0 0 var(--brand-1)}
 .body ul,.body ol{margin:0 0 10px;padding-left:22px}
 .body li{margin:3px 0}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
@@ -1280,15 +1284,17 @@ footer a{color:var(--t2)}
 .body .co .co-t{font-size:13px;font-weight:600;margin:0 0 4px}
 .body .co p{margin:0 0 5px}
 .body .co p:last-child{margin-bottom:0}
-/* 开头提要「> [!summary] 今日提要」：默认收起，点标题行展开（折叠记号用 ▸/▾，与「来源」同一套写法） */
-.body .co-summary{margin-bottom:14px;padding:11px 15px;border-left-color:var(--brand-1);
-  background:var(--brand-soft);border-radius:8px}
-.body .co-summary>summary.co-t{display:flex;align-items:center;gap:7px;margin:0;
-  color:var(--brand-1);cursor:pointer;list-style:none;user-select:none}
+/* 开头提要「> [!summary] 提要」：默认收起，点标题行展开（折叠记号用 ▸/▾，与「来源」同一套写法）。
+   底色走中性面（与侧栏同色）+ 一道品牌色左耳，整块不铺彩色，跟全站素雅基调一致。 */
+.body .co-summary{margin-bottom:14px;padding:10px 15px;background:var(--bg-alt);
+  border:1px solid var(--divider);border-left:3px solid var(--brand-1);border-radius:0 8px 8px 0}
+.body .co-summary>summary.co-t{display:flex;align-items:center;gap:7px;margin:0;color:var(--t2);
+  cursor:pointer;list-style:none;user-select:none;transition:color .15s}
 .body .co-summary>summary.co-t::-webkit-details-marker{display:none}
-.body .co-summary>summary.co-t::before{content:"▸";flex:none;font-size:10px;line-height:1}
+.body .co-summary>summary.co-t::before{content:"▸";flex:none;font-size:10px;line-height:1;color:var(--t3)}
 .body .co-summary[open]>summary.co-t::before{content:"▾"}
-.body .co-summary>summary.co-t:hover{color:var(--brand-2)}
+.body .co-summary>summary.co-t:hover{color:var(--brand-1)}
+.body .co-summary>summary.co-t:hover::before{color:var(--brand-1)}
 .body .co-summary>summary.co-t:focus-visible{outline:2px solid var(--brand-soft);outline-offset:2px}
 .body .co-summary[open]>summary.co-t{margin-bottom:6px}
 .body .co-note{border-left-color:var(--brand-1);background:var(--brand-soft)}
