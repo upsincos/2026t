@@ -912,20 +912,23 @@ function resolveWikiLinks(html: string, label: string): string {
   const hre = /<h([1-6]) id="(h-\d+)">([\s\S]*?)<\/h\1>/g;
   let m = hre.exec(html);
   while (m) {
-    const text = stripTags(m[3]);
-    ids.set(text, m[2]);
-    ids.set(text.replace(/\s+/g, ''), m[2]);
+    ids.set(normHead(stripTags(m[3])), m[2]);
     m = hre.exec(html);
   }
   return html.replace(WIKI_PLACEHOLDER, (_s, enc: string, alias: string) => {
     const target = decodeURIComponent(enc).trim();
-    const id = ids.get(target) ?? ids.get(target.replace(/\s+/g, ''));
+    const id = ids.get(normHead(target));
     if (!id) {
       WIKI_MISSING.push({ label, target });
       return alias || esc(target);
     }
     return `<a href="#${id}">${alias || esc(target)}</a>`;
   });
+}
+
+// 标题比对用的归一化：忽略空白和引号样式（正文写“上一次”、提要写成 "上一次" 也要能对上）
+function normHead(s: string): string {
+  return s.replace(/\s+/g, '').replace(/[‘’“”"']/g, '"');
 }
 
 function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): string {
@@ -974,12 +977,24 @@ function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): strin
         buf.push(lines[i].replace(/^\s*>\s?/, ''));
         i++;
       }
-      const cm = /^\s*\[!([A-Za-z+-]+)\]\s*(.*)$/.exec(buf[0] ?? '');
+      // 折叠记号在方括号外（> [!summary]-），也兼容写在里面（> [!summary-]）的写法
+      const cm = /^\s*\[!([A-Za-z]+)([+-]?)\]([+-]?)\s*(.*)$/.exec(buf[0] ?? '');
       const cbody = buf.slice(cm ? 1 : 0).filter((t) => t.trim() !== '');
       if (cm) {
-        const type = cm[1].toLowerCase().replace(/[+-]$/, '');
+        // 尾部 + / - 是 Obsidian 的折叠记号（+ 展开、- 收起），提要默认收起
+        const fold = cm[2] || cm[3];
+        const type = cm[1].toLowerCase();
         const [kind, label] = CALLOUTS[type] ?? ['note', type];
-        const title = cm[2].trim();
+        const title = cm[4].trim();
+        if (kind === 'summary') {
+          out.push(
+            `<details class="co co-summary"${fold === '+' ? ' open' : ''}>` +
+              `<summary class="co-t">${inline(title || label, mdDir, prefix)}</summary>` +
+              cbody.map((t) => `<p>${inline(t, mdDir, prefix)}</p>`).join('') +
+              `</details>`,
+          );
+          continue;
+        }
         out.push(
           `<div class="co co-${kind}">` +
             `<div class="co-t">${inline(title || label, mdDir, prefix)}</div>` +
@@ -1265,10 +1280,17 @@ footer a{color:var(--t2)}
 .body .co .co-t{font-size:13px;font-weight:600;margin:0 0 4px}
 .body .co p{margin:0 0 5px}
 .body .co p:last-child{margin-bottom:0}
-/* 开头提要「> [!summary] 今日提要」：放在正文最上方，比普通提醒块稍宽松一点 */
+/* 开头提要「> [!summary] 今日提要」：默认收起，点标题行展开（折叠记号用 ▸/▾，与「来源」同一套写法） */
 .body .co-summary{margin-bottom:14px;padding:11px 15px;border-left-color:var(--brand-1);
   background:var(--brand-soft);border-radius:8px}
-.body .co-summary .co-t{color:var(--brand-1)}
+.body .co-summary>summary.co-t{display:flex;align-items:center;gap:7px;margin:0;
+  color:var(--brand-1);cursor:pointer;list-style:none;user-select:none}
+.body .co-summary>summary.co-t::-webkit-details-marker{display:none}
+.body .co-summary>summary.co-t::before{content:"▸";flex:none;font-size:10px;line-height:1}
+.body .co-summary[open]>summary.co-t::before{content:"▾"}
+.body .co-summary>summary.co-t:hover{color:var(--brand-2)}
+.body .co-summary>summary.co-t:focus-visible{outline:2px solid var(--brand-soft);outline-offset:2px}
+.body .co-summary[open]>summary.co-t{margin-bottom:6px}
 .body .co-note{border-left-color:var(--brand-1);background:var(--brand-soft)}
 .body .co-note .co-t{color:var(--brand-1)}
 .body .co-tip{border-left-color:var(--green-1);background:var(--green-soft)}
@@ -1996,12 +2018,24 @@ function main(): void {
   }
 
   // ── 输出汇报 ──
+  // 同一篇被复制成两份（文件名不同、标题相同）时提示：站内会变成两篇一样的文章
+  const byTitle = new Map<string, string[]>();
+  for (const p of pages) {
+    const key = p.entry.title.trim();
+    byTitle.set(key, [...(byTitle.get(key) ?? []), p.entry.relPath]);
+  }
+  const dupTitles = [...byTitle.entries()].filter(([, files]) => files.length > 1);
+  if (dupTitles.length > 0) {
+    console.warn(
+      `提示：有 ${dupTitles.length} 组文章标题重复（${dupTitles.map(([t, fs]) => `${t}：${fs.join('、')}`).join('；')}）——同一篇被复制成了两份，删掉多余的那份。`,
+    );
+  }
   const briefs = pages
     .map((p) => ({ title: p.entry.title, n: cpLen(stripMd(summaryBody(p.entry.body))) }))
-    .filter((x) => x.n > 0 && (x.n < 100 || x.n > 300));
+    .filter((x) => x.n > 300);
   if (briefs.length > 0) {
     console.warn(
-      `提示：${briefs.map((x) => `${x.title}（${x.n} 字）`).join('、')} 的开头提要不在 100–300 字之间。`,
+      `提示：${briefs.map((x) => `${x.title}（${x.n} 字）`).join('、')} 的开头提要超过 300 字，压一压。`,
     );
   }
   if (WIKI_MISSING.length > 0) {
