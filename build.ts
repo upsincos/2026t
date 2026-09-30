@@ -774,6 +774,12 @@ function inline(s: string, mdDir = '', prefix = ''): string {
   // Obsidian 式图片 ![[名称]]（| 后非纯数字时当作别名/图注）
   out = out.replace(RE_WIKI, (_m, name: string, alias: string | undefined) =>
     hold(imgTagForWiki(name, alias && !/^\d+(x\d+)?$/.test(alias) ? alias : '', mdDir, prefix)));
+  // Obsidian 内链 [[#小节标题]] / [[#小节标题|显示文字]]：锚点 id 要等整篇正文渲染完才知道，先占位
+  out = out.replace(
+    /\[\[#([^\]|]+?)(?:\|([^\]]+?))?\]\]/g,
+    (_m, t: string, alias: string | undefined) =>
+      `\u0002${encodeURIComponent(t.trim())}\u0001${alias ? alias.trim() : ''}\u0002`,
+  );
   // 链接 [文字](https://…)
   out = out.replace(
     /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
@@ -886,7 +892,7 @@ function readList(lines: string[], start: number, mdDir = '', prefix = ''): { ht
 
 // Obsidian 提醒块（callout）类型表：type → [配色 kind, 无自定义标题时的默认文案]
 const CALLOUTS: Record<string, [string, string]> = {
-  note: ['note', '笔记'], abstract: ['note', '概要'], summary: ['note', '概要'],
+  note: ['note', '笔记'], abstract: ['summary', '提要'], summary: ['summary', '提要'], tldr: ['summary', '提要'],
   todo: ['note', '待办'], info: ['note', '信息'], example: ['note', '示例'],
   tip: ['tip', '提示'], hint: ['tip', '提示'], important: ['tip', '重要'],
   success: ['tip', '成功'], check: ['tip', '完成'], done: ['tip', '完成'],
@@ -897,7 +903,32 @@ const CALLOUTS: Record<string, [string, string]> = {
   quote: ['quote', '引用'], cite: ['quote', '引用'],
 };
 
-function mdToHtml(md: string, mdDir: string, prefix = ''): string {
+// 开头提要里的 [[#小节标题]] 内链：正文渲染完才知道每节最终拿到哪个锚点（h-1、h-2…），所以收尾统一替换
+const WIKI_PLACEHOLDER = /\u0002([^\u0001\u0002]*)\u0001([^\u0002]*)\u0002/g;
+const WIKI_MISSING: { label: string; target: string }[] = [];
+
+function resolveWikiLinks(html: string, label: string): string {
+  const ids = new Map<string, string>();
+  const hre = /<h([1-6]) id="(h-\d+)">([\s\S]*?)<\/h\1>/g;
+  let m = hre.exec(html);
+  while (m) {
+    const text = stripTags(m[3]);
+    ids.set(text, m[2]);
+    ids.set(text.replace(/\s+/g, ''), m[2]);
+    m = hre.exec(html);
+  }
+  return html.replace(WIKI_PLACEHOLDER, (_s, enc: string, alias: string) => {
+    const target = decodeURIComponent(enc).trim();
+    const id = ids.get(target) ?? ids.get(target.replace(/\s+/g, ''));
+    if (!id) {
+      WIKI_MISSING.push({ label, target });
+      return alias || esc(target);
+    }
+    return `<a href="#${id}">${alias || esc(target)}</a>`;
+  });
+}
+
+function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): string {
   const lines = md.replace(/\r\n?/g, '\n').split('\n');
   const out: string[] = [];
   let i = 0;
@@ -994,7 +1025,7 @@ function mdToHtml(md: string, mdDir: string, prefix = ''): string {
     }
     flushPara();
   }
-  return out.join('\n');
+  return resolveWikiLinks(out.join('\n'), wikiLabel);
 }
 
 /* ═══════════════ 样式与脚本 ═══════════════ */
@@ -1234,6 +1265,10 @@ footer a{color:var(--t2)}
 .body .co .co-t{font-size:13px;font-weight:600;margin:0 0 4px}
 .body .co p{margin:0 0 5px}
 .body .co p:last-child{margin-bottom:0}
+/* 开头提要「> [!summary] 今日提要」：放在正文最上方，比普通提醒块稍宽松一点 */
+.body .co-summary{margin-bottom:14px;padding:11px 15px;border-left-color:var(--brand-1);
+  background:var(--brand-soft);border-radius:8px}
+.body .co-summary .co-t{color:var(--brand-1)}
 .body .co-note{border-left-color:var(--brand-1);background:var(--brand-soft)}
 .body .co-note .co-t{color:var(--brand-1)}
 .body .co-tip{border-left-color:var(--green-1);background:var(--green-soft)}
@@ -1360,6 +1395,8 @@ function stripMd(md: string): string {
   t = t.replace(/^\s{0,3}(?:[-*_]\s*){3,}$/gm, ' ');      // 分隔线
   t = t.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');            // 图片
   t = t.replace(/!\[\[[^\]]*\]\]/g, ' ');            // Obsidian 式图片
+  t = t.replace(/\[\[#([^\]|]+?)(?:\|([^\]]+?))?\]\]/g, (_m, a: string, b?: string) =>
+    b ?? a);                                          // Obsidian 式内链：只留显示文字
   t = t.replace(/==([^=]+)==/g, '$1');                    // 高亮
   t = t.replace(/~~([^~]+)~~/g, '$1');                    // 删除线
   t = t.replace(/\[![A-Za-z+-]+\]/g, ' ');                // 提醒块记号
@@ -1384,6 +1421,20 @@ function stripTags(s: string): string {
 function excerptOf(md: string, n = 100): string {
   const t = stripMd(md);
   return cpLen(t) <= n ? t : cpSlice(t, 0, n) + '…';
+}
+
+// 开头提要：> [!summary] 块的正文（标题行不计），用于「100–300 字」提示
+function summaryBody(md: string): string {
+  const lines = md.replace(/\r\n?/g, '\n').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^\s*>\s*\[!(summary|abstract|tldr)\]/i.test(lines[i])) continue;
+    const buf: string[] = [];
+    for (let j = i + 1; j < lines.length && /^\s*>/.test(lines[j]); j++) {
+      buf.push(lines[j].replace(/^\s*>\s?/, ''));
+    }
+    return buf.join('\n');
+  }
+  return '';
 }
 
 /* ── 页面骨架 ── */
@@ -1456,7 +1507,7 @@ function renderPostPage(pages: PageRef[], i: number, footer: string): string {
     );
   }
   // 正文里的标题会带 #h-N 锚点；小节 ≥2 时：宽屏出左侧目录、窄屏出顶栏跳转下拉
-  const bodyHtml = mdToHtml(p.entry.body, p.entry.dir, PAGE_PREFIX);
+  const bodyHtml = mdToHtml(p.entry.body, p.entry.dir, PAGE_PREFIX, p.entry.title);
   const heads: { id: string; text: string; lvl: number }[] = [];
   const hre = /<h([3-6]) id="(h-\d+)">([\s\S]*?)<\/h\1>/g;
   let hm = hre.exec(bodyHtml);
@@ -1945,6 +1996,19 @@ function main(): void {
   }
 
   // ── 输出汇报 ──
+  const briefs = pages
+    .map((p) => ({ title: p.entry.title, n: cpLen(stripMd(summaryBody(p.entry.body))) }))
+    .filter((x) => x.n > 0 && (x.n < 100 || x.n > 300));
+  if (briefs.length > 0) {
+    console.warn(
+      `提示：${briefs.map((x) => `${x.title}（${x.n} 字）`).join('、')} 的开头提要不在 100–300 字之间。`,
+    );
+  }
+  if (WIKI_MISSING.length > 0) {
+    console.warn(
+      `提示：${WIKI_MISSING.length} 个 [[#小节]] 内链没找到同名标题（${[...new Set(WIKI_MISSING.map((x) => x.target))].slice(0, 6).join('、')}）；要和正文里的小节标题一字不差。`,
+    );
+  }
   console.log(`栏目 ${nonEmpty.length} ｜ 共 ${total} 篇${counts ? ` ｜ ${counts}` : ''}`);
   console.log(`首页：${OUT_FILE}（${Buffer.byteLength(home, 'utf8')} 字节）`);
   console.log(`文章页：${pages.length} 个 → ${PAGES_OUT}/`);
