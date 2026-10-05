@@ -53,6 +53,9 @@ const SITE = {
   name: '12传说',   // 站点名字（顶栏标题）
   tagline: '',            // 顶栏小字；留空时自动显示「共 N 篇」
   description: '',        // 搜索引擎描述；留空时自动生成
+  // 线上绝对地址（分享卡片 og:url / canonical / 图片绝对链接用）；留空则退回相对地址。
+  // 换域名或换仓库名时改这里，并在下面 OG_CARD 处确认默认分享图还在。
+  url: 'https://upsincos.github.io/2026t/',
 };
 
 // 栏目 = posts/ 下的文件夹，自动识别：新建 / 改名 / 移动文件夹都会自动生效，不需要改这里。
@@ -130,6 +133,7 @@ const SITE_ROOT = dirname(OUT_FILE);
 const PAGES_DIR = 'posts';          // 文章页目录（站点根下）
 const PAGES_OUT = join(SITE_ROOT, PAGES_DIR);
 const PAGE_PREFIX = '../';          // 文章页引用站点根资源（assets/）的相对前缀
+const STATIC_DIR = join(HERE, 'static');   // 原样复制进站点根的静态文件（目前只有分享卡片）
 
 /* ─────────────── 读取与解析 ─────────────── */
 
@@ -759,6 +763,23 @@ function imgTagForWiki(rawName: string, alt: string, mdDir: string, prefix = '')
   return `<img src="${escAttr(url)}" alt="${escAttr(alt)}"${dims} loading="lazy" decoding="async">`;
 }
 
+// 正文里的第一张图（压缩后的输出信息）：分享卡片拿它当 og:image；没有就返回 null
+function firstImage(e: Entry): ImgInfo | null {
+  for (const m of e.body.matchAll(RE_IMG)) {
+    const src = cleanSrc(m[2]);
+    if (/^(https?:|data:|mailto:)/i.test(src)) continue;
+    const abs = resolveImagePath(src, e.dir);
+    const info = abs ? IMG_INFOS.get(abs) : null;
+    if (info) return info;
+  }
+  for (const w of e.body.matchAll(RE_WIKI)) {
+    const abs = resolveWikiImage(w[1].trim(), e.dir);
+    const info = abs ? IMG_INFOS.get(abs) : null;
+    if (info) return info;
+  }
+  return null;
+}
+
 function inline(s: string, mdDir = '', prefix = ''): string {
   const stash: string[] = [];
   const hold = (htmlText: string): string => {
@@ -1074,10 +1095,27 @@ const CSS = `
   --gray-1:#a4a8ae;--gray-soft:rgba(142,150,170,.16);
   --mark:rgba(234,179,8,.3);
 }
+
+/* ── 阅读外观：底色 / 字体（全局，存在 localStorage，换页也生效）
+      底色只调中性面（背景与分隔线），不碰品牌色，保证「素雅」基调不变。── */
+/* 字体只列系统已装的：mac / Windows / Android / Linux 各留一条回退，不下载任何字体文件。
+   宋体 / 楷体 / 仿宋 是中文长文阅读最耐看的三种衬线，圆体偏柔和，放最后。 */
+html[data-font=serif]{--font:Georgia,"Songti SC","Source Han Serif SC","Noto Serif CJK SC",STSong,SimSun,serif}
+html[data-font=kai]{--font:"Kaiti SC",STKaiti,"TW-Kai",KaiTi,"Noto Serif CJK SC",serif}
+html[data-font=fangsong]{--font:"FangSong","STFangsong","FangSong_GB2312","Noto Serif CJK SC",serif}
+html[data-font=yuan]{--font:"Yuanti SC",YouYuan,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+html[data-font=serif] .body,html[data-font=kai] .body,html[data-font=fangsong] .body{line-height:1.88}
+html[data-font=kai] .body{font-size:15.5px;letter-spacing:.015em}
+html[data-theme=light][data-paper=cream]{--bg:#faf7f0;--bg-alt:#f4efe3;--bg-elv:#fffdf9;--bg-mute:#f1ead9;--divider:#e7e0d0}
+html[data-theme=light][data-paper=green]{--bg:#f6f9f4;--bg-alt:#eef3ea;--bg-elv:#fcfdfb;--bg-mute:#eaf0e4;--divider:#dee6d7}
+html[data-theme=light][data-paper=blue]{--bg:#f5f7fa;--bg-alt:#eef1f6;--bg-elv:#fcfdfe;--bg-mute:#e9eef5;--divider:#dce2eb}
+html[data-theme=dark][data-paper=cream]{--bg:#1d1b17;--bg-alt:#191713;--bg-elv:#242119;--bg-mute:#2e2a22;--divider:#332f26}
+html[data-theme=dark][data-paper=green]{--bg:#181d19;--bg-alt:#141814;--bg-elv:#1f2420;--bg-mute:#2a302a;--divider:#2b332c}
+html[data-theme=dark][data-paper=blue]{--bg:#181b21;--bg-alt:#14161b;--bg-elv:#1e2229;--bg-mute:#272c34;--divider:#2a3038}
 html{scroll-behavior:smooth;scroll-padding-top:calc(var(--bar) + 14px);overflow-y:scroll}
 /* 打开文章 / 后退：支持的浏览器整页平滑过渡（不支持则照常瞬时切换，无副作用） */
 @view-transition{navigation:auto}
-body{margin:0;background:var(--bg);color:var(--t1);font:15px/1.75 var(--font);
+body{margin:0;background-color:var(--bg);color:var(--t1);font:15px/1.75 var(--font);
   -webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
 a{color:var(--brand-1);text-decoration:none}
 a:hover{color:var(--brand-2);text-decoration:underline;text-underline-offset:2px}
@@ -1109,6 +1147,24 @@ strong{font-weight:600;color:var(--t1)}
 .count{font-size:12px;color:var(--t3);white-space:nowrap;font-variant-numeric:tabular-nums}
 .jump{display:none;height:30px;max-width:38vw;padding:0 6px;border-radius:8px;border:1px solid var(--divider);
   background:var(--bg-elv);color:var(--t2);font:500 12px/1 var(--font)}
+
+/* ── 外观面板（底色 / 字体）：沿用侧栏标签下拉那套自绘控件语言，不用原生 select ── */
+.look{position:relative}
+/* 面板宽度取 max-content：否则绝对定位 + right:0 会以触发按钮为基准收缩，
+   收缩到只剩按钮宽 → 每行按钮被迫竖排。 */
+.look-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:60;display:none;padding:10px 12px;
+  width:max-content;background:var(--bg-elv);border:1px solid var(--divider);border-radius:10px;
+  box-shadow:0 8px 26px rgba(0,0,0,.12);max-width:calc(100vw - 24px)}
+.look[data-open="1"] .look-panel{display:block}
+.look-row{display:flex;align-items:center;gap:10px;margin:0 0 9px}
+.look-row:last-child{margin-bottom:0}
+.look-k{flex:none;width:26px;font-size:12px;color:var(--t3)}
+.look-os{display:flex;flex-wrap:wrap;gap:6px}
+.look-o{padding:4px 10px;border-radius:999px;border:1px solid var(--divider);background:var(--bg-alt);
+  color:var(--t2);font:400 12px/1.5 var(--font);cursor:pointer;
+  transition:border-color .15s,color .15s,background-color .15s}
+.look-o:hover{border-color:var(--brand-2);color:var(--t1)}
+.look-o[aria-pressed=true]{background:var(--brand-soft);border-color:var(--brand-1);color:var(--brand-1)}
 
 main{flex:1;min-width:0;padding:26px 40px 140px;max-width:940px}
 body>main{margin-left:auto;margin-right:auto}
@@ -1233,6 +1289,38 @@ body.plain-only .fields,body.plain-only .src{display:none}
 .pager a span{font-weight:500;overflow-wrap:anywhere}
 .pager .older{margin-left:auto;text-align:right}
 
+/* ── 书页模式：正文走 CSS 分栏，翻页只做一次 transform（不测量文字、不重建 DOM，所以不卡）──
+      分栏高度固定后，溢出的内容会自动排到下一栏；整块左移一栏的宽度就是一页。
+      窄屏（≤820）分栏读起来难受，下面那段媒体查询里会把它还原成普通滚动。 */
+.bookbar{display:none}
+html[data-read=book] .article{max-width:none;height:calc(100vh - var(--bar));display:flex;
+  flex-direction:column;padding:18px 44px 0;overflow:hidden}
+html[data-read=book] .article>.chips{margin:8px 0 14px}
+/* 裁剪必须放在没被位移的外层 .bookwrap：裁在 .book 自己身上的话，
+   多出来的栏和位移一起移动，翻页后看到的是空白。 */
+html[data-read=book] .bookwrap{flex:1;min-height:0;overflow:hidden}
+html[data-read=book] .book{height:100%;columns:1;column-gap:56px;column-fill:auto;
+  transition:transform .3s cubic-bezier(.22,.61,.36,1)}
+html[data-read=book] .book.noanim{transition:none}
+html[data-read=book] .body figure,html[data-read=book] .body pre.code,html[data-read=book] .body .co,
+html[data-read=book] .body li,html[data-read=book] .pager,html[data-read=book] .book>footer{break-inside:avoid}
+html[data-read=book] .body h3,html[data-read=book] .body h4,html[data-read=book] .body h5{break-after:avoid}
+/* 书页模式里图片收得比滚动模式小得多：一页只有一栏，图一大正文就没地方了。
+   图整块不拆栏（figure 上是 break-inside:avoid），收到 26vh / 240px 后一张图只占一小块，
+   剩下的高度还能排进上下文，页尾也不至于空一大片。要看大图点开灯箱即可。 */
+html[data-read=book] .body img{max-height:min(26vh,240px);max-width:90%}
+html[data-read=book] .book>footer{margin-top:24px}
+html[data-read=book] #top{display:none}
+html[data-read=book] .bookbar{display:flex;align-items:center;justify-content:center;gap:12px;
+  flex:none;height:42px;font-size:12px;color:var(--t3);font-variant-numeric:tabular-nums}
+.pgbtn{width:26px;height:26px;border-radius:6px;border:1px solid var(--divider);background:var(--bg-elv);
+  color:var(--t2);font:400 15px/1 var(--font);cursor:pointer;transition:border-color .15s,color .15s}
+.pgbtn:hover:not(:disabled){border-color:var(--brand-1);color:var(--brand-1)}
+.pgbtn:disabled{opacity:.35;cursor:default}
+@media (prefers-reduced-motion:reduce){
+  html[data-read=book] .book{transition:none}
+}
+
 .hidden{display:none!important}
 .empty{color:var(--t3);font-size:14px;padding:40px 0;text-align:center}
 footer{color:var(--t3);font-size:12px;border-top:1px solid var(--divider);padding-top:14px;
@@ -1344,22 +1432,31 @@ footer a{color:var(--t2)}
 }
 @media (max-width:820px){
   .bar{padding:8px 12px;gap:8px;min-height:0}
-  /* 手机上顶栏折成多行：① 返回 + 标题 ② 目录跳转 ③ 明暗 ④ 筛选 ⑤ 计数 ⑥ 搜索（独占整行，才好打字） */
+  /* 手机上顶栏折成多行：① 返回 + 标题 ② 目录跳转 ③ 明暗 + 外观 ④ 筛选 ⑤ 计数 ⑥ 搜索（独占整行，才好打字） */
   .back{order:1}
   .bar h1,.bar .brand{order:2;flex:1 1 120px;font-size:14px;overflow:hidden;text-overflow:ellipsis}
   .spacer{display:none}
   .jump{order:3}
   #theme{order:4}
+  .look{order:5}
   .fsecs{display:contents}
-  .fsec{order:5}
-  .count{order:6;margin-left:auto}
-  .search{order:7;width:auto;max-width:none;flex:1 1 100%;margin:2px 0 0}
+  .fsec{order:6}
+  .count{order:7;margin-left:auto}
+  .search{order:8;width:auto;max-width:none;flex:1 1 100%;margin:2px 0 0}
   .search input{height:34px}
   .search kbd{display:none}
-  /* 向下滚动后收成一行（标题+搜索+明暗），把竖向空间还给列表；滚回顶部再展开 */
+  /* 向下滚动后收成一行（标题+搜索+明暗+外观），把竖向空间还给列表；滚回顶部再展开 */
   body.compact .jump,body.compact .fsec,body.compact .count{display:none}
   body.compact .search{order:3;flex:1 1 120px;margin-top:0}
   body.compact #theme{order:4}
+  body.compact .look{order:5}
+  /* 书页模式在窄屏还原成普通滚动（分栏在手机上读起来是折磨），开关也一并收起 */
+  #mode{display:none}
+  html[data-read=book] .article{height:auto;display:block;padding:16px 13px 110px;overflow:visible}
+  html[data-read=book] .bookwrap{overflow:visible}
+  html[data-read=book] .book{columns:auto;column-fill:balance;height:auto;transform:none!important}
+  html[data-read=book] #top{display:block}
+  .bookbar{display:none!important}
   main{padding:16px 13px 110px}
   .article h1{font-size:22px}
   .ititle{font-size:15.5px}
@@ -1371,6 +1468,8 @@ footer a{color:var(--t2)}
 @media (max-width:520px){
   .bar h1 small,.bar .brand small{display:none}
   .chips,.plain,.fields,.src,.body{margin-left:0}
+  /* 手机上触发按钮靠右，面板再按 right:0 对齐会顶出左边界；改成贴上栏的通栏浮层 */
+  .look-panel{position:fixed;left:12px;right:12px;top:calc(var(--bar) + 8px);width:auto;max-width:none}
 }
 /* 320-380px 的窄屏：按钮收紧，否则顶栏会被挤到多占一到两行 */
 @media (max-width:380px){
@@ -1469,18 +1568,101 @@ function summaryBody(md: string): string {
 
 const TOP_BTN = `<button id="top" title="回到顶部" aria-label="回到顶部">↑</button>`;
 const SIDE_BTN = `<button class="btn" id="side-toggle" title="收起侧栏" aria-label="收起或展开侧栏">«</button>`;
+
+// 外观面板（底色 / 字体）：两页共用，点一下即生效并记进 localStorage
+function lookRow(label: string, k: string, opts: string[][]): string {
+  return (
+    `<div class="look-row"><span class="look-k">${label}</span><div class="look-os">` +
+    opts
+      .map(([v, t]) => `<button class="look-o" type="button" data-k="${k}" data-v="${v}">${t}</button>`)
+      .join('') +
+    `</div></div>`
+  );
+}
+const LOOK_BAR =
+  `<div class="look" id="look">` +
+  `<button class="btn" id="look-btn" type="button" aria-expanded="false" aria-haspopup="true">外观</button>` +
+  `<div class="look-panel" id="look-panel">` +
+  lookRow('底色', 'paper', [['', '纯白'], ['cream', '米黄'], ['green', '豆绿'], ['blue', '灰蓝']]) +
+  lookRow('字体', 'font', [['', '无衬线'], ['serif', '宋体'], ['kai', '楷体'], ['fangsong', '仿宋'], ['yuan', '圆体']]) +
+  `</div></div>`;
+
+// 书页模式的翻页条（只在书页模式下出现，显隐交给 CSS）
+const BOOKBAR =
+  `<div class="bookbar" id="bookbar">` +
+  `<button class="pgbtn" id="pg-prev" type="button" aria-label="上一页">‹</button>` +
+  `<span id="pgnum">1 / 1</span>` +
+  `<button class="pgbtn" id="pg-next" type="button" aria-label="下一页">›</button></div>`;
 const LIGHTBOX = `<div id="lb" role="dialog" aria-modal="true" aria-label="查看大图"><img alt=""></div>`;
 
-function pageHead(title: string, desc: string): string {
+/* ── 分享卡片（og / twitter）：链接丢进微信、Telegram、Slack 时有标题、摘要和配图。
+      og:image 用文章里的第一张图（绝对地址），没有配图就退回站点默认卡片 —— 静态文件，
+      不在页面里加载，所以对首屏零成本。 ── */
+interface HeadMeta {
+  title?: string;                  // og:title；默认用页面 <title>
+  url?: string;                    // 站点根相对路径（'' 表示首页）
+  image?: string;                  // 站点根相对路径；缺省用默认卡片
+  imageW?: number;
+  imageH?: number;
+  type?: 'website' | 'article';
+  published?: string;
+  tags?: string[];
+}
+const OG_CARD = 'og.png';          // 默认分享图（源文件 static/og.png，构建时复制到站点根）
+const OG_CARD_W = 1200;
+const OG_CARD_H = 630;
+
+// 站点根相对路径 → 线上绝对地址（没配 SITE.url 时原样返回）
+function absUrl(rel: string): string {
+  const base = SITE.url.replace(/\/+$/, '');
+  const p = String(rel || '').replace(/^\.?\//, '');
+  if (!base) return p;
+  return p ? `${base}/${p}` : `${base}/`;
+}
+
+function pageHead(title: string, desc: string, meta: HeadMeta = {}): string {
+  const d = escAttr(desc);
+  const ogTitle = escAttr(meta.title || title);
+  const url = absUrl(meta.url ?? '');
+  const img = absUrl(meta.image || OG_CARD);
+  let og =
+    `<meta property="og:title" content="${ogTitle}">` +
+    `<meta property="og:description" content="${d}">` +
+    `<meta property="og:site_name" content="${escAttr(SITE.name)}">` +
+    `<meta property="og:type" content="${meta.type || 'website'}">` +
+    `<meta property="og:locale" content="zh_CN">` +
+    `<meta property="og:url" content="${escAttr(url)}">` +
+    `<meta property="og:image" content="${escAttr(img)}">`;
+  if (meta.imageW && meta.imageH) {
+    og +=
+      `<meta property="og:image:width" content="${meta.imageW}">` +
+      `<meta property="og:image:height" content="${meta.imageH}">`;
+  }
+  if (meta.published) og += `<meta property="article:published_time" content="${escAttr(meta.published)}">`;
+  for (const t of meta.tags || []) og += `<meta property="article:tag" content="${escAttr(t)}">`;
+  og +=
+    `<meta name="twitter:card" content="summary_large_image">` +
+    `<meta name="twitter:title" content="${ogTitle}">` +
+    `<meta name="twitter:description" content="${d}">` +
+    `<meta name="twitter:image" content="${escAttr(img)}">`;
   return (
     `<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">` +
     `<meta name="color-scheme" content="light dark">` +
     `<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">` +
     `<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1b1b1f">` +
-    `<meta name="description" content="${escAttr(desc)}">` +
+    `<meta name="description" content="${d}">` +
+    `<link rel="canonical" href="${escAttr(url)}">` +
+    og +
     `<title>${esc(title)}</title><style>${CSS}</style>` +
-    `<script>try{if(localStorage.getItem('blog-side')==='0')document.documentElement.setAttribute('data-side','0')}catch(e){}</script>` +
+    // 首帧之前就把记忆里的侧栏 / 明暗 / 外观 / 阅读模式落到 <html> 上，避免闪一下再变
+    `<script>try{` +
+    `var d=document.documentElement;` +
+    `if(localStorage.getItem('blog-side')==='0')d.setAttribute('data-side','0');` +
+    `['paper','font'].forEach(function(k){` +
+    `var v=localStorage.getItem('blog-'+k);if(v)d.setAttribute('data-'+k,v);});` +
+    `if(localStorage.getItem('blog-read')==='book')d.setAttribute('data-read','book');` +
+    `}catch(e){}</script>` +
     `</head><body>`
   );
 }
@@ -1572,16 +1754,33 @@ function renderPostPage(pages: PageRef[], i: number, footer: string): string {
     (hasToc ? SIDE_BTN : '') +
     `<div class="brand">${esc(SITE.name)}</div>` +
     jump +
-    `<div class="spacer"></div><button class="btn" id="theme">明/暗</button></header>`;
+    `<div class="spacer"></div>` +
+    `<button class="btn" id="mode" type="button" aria-pressed="false" title="在书页翻页与上下滚动之间切换">书页/滚动</button>` +
+    `<button class="btn" id="theme">明/暗</button>` +
+    LOOK_BAR +
+    `</header>`;
   const main =
     `<main class="article"><h1>${esc(p.entry.title)}</h1>` +
     chipsRow(p) +
-    `<div class="body">${bodyHtml}</div>` +
+    // pager / footer 放进 .book：滚动模式下和原来一样是普通块级顺序；书页模式下会排到最后一页
+    `<div class="bookwrap"><div class="book" id="book"><div class="body">${bodyHtml}</div>` +
     (pg.length ? `<nav class="pager">${pg.join('')}</nav>` : '') +
     footer +
+    `</div></div>` +
+    BOOKBAR +
     `</main>`;
+  const cover = firstImage(p.entry);
   return (
-    pageHead(`${p.entry.title} · ${SITE.name}`, p.excerpt) +
+    pageHead(`${p.entry.title} · ${SITE.name}`, p.excerpt, {
+      title: p.entry.title,
+      url: p.outName,
+      type: 'article',
+      published: p.entry.date,
+      tags: p.entry.tags,
+      image: cover ? cover.rel : OG_CARD,
+      imageW: cover ? cover.w : OG_CARD_W,
+      imageH: cover ? cover.h : OG_CARD_H,
+    }) +
     bar +
     (hasToc ? `<div class="shell">${toc}${main}</div>` : main) +
     LIGHTBOX +
@@ -1656,7 +1855,33 @@ addEventListener('scroll',()=>{
   if(ticking) return;
   ticking=true;
   requestAnimationFrame(()=>{ticking=false;onScroll();});
-},{passive:true});`;
+},{passive:true});
+/* 外观：底色 / 字体。和明暗同源，写进 localStorage，所有页面共用一套记忆 */
+const lookEl=document.getElementById('look');
+const lookBtn=document.getElementById('look-btn');
+if(lookEl&&lookBtn){
+  const cur=k=>document.documentElement.getAttribute('data-'+k)||'';
+  const syncLook=()=>{document.querySelectorAll('.look-o').forEach(o=>{
+    o.setAttribute('aria-pressed',String(cur(o.getAttribute('data-k'))===(o.getAttribute('data-v')||'')));
+  });};
+  const lookOpen=v=>{lookEl.setAttribute('data-open',v?'1':'0');lookBtn.setAttribute('aria-expanded',v?'true':'false');};
+  document.querySelectorAll('.look-o').forEach(o=>{
+    o.addEventListener('click',()=>{
+      const k=o.getAttribute('data-k'),v=o.getAttribute('data-v')||'';
+      if(v) document.documentElement.setAttribute('data-'+k,v);
+      else document.documentElement.removeAttribute('data-'+k);
+      try{localStorage.setItem('blog-'+k,v);}catch(e){}
+      syncLook();
+      syncBar();
+    });
+  });
+  lookBtn.addEventListener('click',e=>{e.stopPropagation();lookOpen(lookEl.getAttribute('data-open')!=='1');});
+  document.addEventListener('click',e=>{if(!lookEl.contains(e.target))lookOpen(false);});
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'&&lookEl.getAttribute('data-open')==='1'){lookOpen(false);lookBtn.focus();}
+  });
+  syncLook();
+}`;
 
 // 首页：只搜列表（标题 / 标签 / 摘要，正文不在 DOM 里）+ 栏目筛选 + 计数
 const JS_HOME = `const items=[...document.querySelectorAll('.item')];
@@ -1671,6 +1896,40 @@ let tagCur='';
 const PAGE=20;
 let secMode=null;
 let cap=PAGE;
+
+/* 正文全文搜索：索引（assets/search.js）首次搜索时才加载，首屏不受影响。
+   加载完再重跑一次筛选，把「正文里命中」的文章补进列表，并用一句话摘要标出命中位置。 */
+let IDX=null,idxLoaded=false,idxLoading=false,byHref=null;
+const exOrig=new Map();
+items.forEach(it=>{const e=it.querySelector('.iex');if(e)exOrig.set(it,e.textContent);});
+function loadIdx(){
+  if(idxLoaded||idxLoading) return;
+  idxLoading=true;
+  const s=document.createElement('script');
+  s.src='assets/search.js';
+  s.onload=()=>{
+    IDX=window.__BLOG_IDX||[];idxLoaded=true;byHref={};
+    IDX.forEach(r=>{byHref[r.u]=r;});
+    if(q.value.trim())apply();
+  };
+  s.onerror=()=>{idxLoaded=true;IDX=[];};
+  document.head.appendChild(s);
+}
+function recOf(it){
+  if(!byHref) return null;
+  const a=it.querySelector('.ititle');
+  return a?byHref[a.getAttribute('href')]||null:null;
+}
+function hasAll(hay,parts){
+  for(let i=0;i<parts.length;i++){if(hay.indexOf(parts[i])<0)return false;}
+  return true;
+}
+function snip(text,term){
+  const i=text.toLowerCase().indexOf(term);
+  if(i<0) return '';
+  const a=Math.max(0,i-32),b=Math.min(text.length,i+term.length+64);
+  return (a>0?'…':'')+text.slice(a,b)+(b<text.length?'…':'');
+}
 
 function clearMarks(root){
   const ms=[...root.querySelectorAll('mark')];
@@ -1706,12 +1965,20 @@ function markAll(root,term){
 }
 function apply(){
   const term=q.value.trim().toLowerCase();
+  const parts=term?term.split(/\s+/):[];
   clearMarks(list);
   let shown=0;
   const matched=[];
   items.forEach(it=>{
+    const ex=it.querySelector('.iex');
+    if(ex) ex.textContent=exOrig.get(it)||'';
     let ok=(secMode===null||it.getAttribute('data-sec')===secMode);
-    if(ok&&term&&it.textContent.toLowerCase().indexOf(term)<0) ok=false;
+    if(ok&&term&&!hasAll(it.textContent.toLowerCase(),parts)){
+      // 标题 / 摘要 / 标签没命中 → 再翻正文索引；命中就把摘要换成正文里那句话
+      ok=false;
+      const r=recOf(it);
+      if(r&&hasAll(r.b.toLowerCase(),parts)){ok=true;if(ex)ex.textContent=snip(r.b,parts[0]);}
+    }
     it.classList.toggle('hidden',!ok);
     if(ok){shown++;matched.push(it);}
   });
@@ -1727,10 +1994,11 @@ function apply(){
   if(tagsd) tagsdSync(term);
   const sc=document.getElementById('sec-count');
   if(sc) sc.textContent=shown+' 篇';
-  if(term) markAll(list,term);
+  parts.forEach(p=>markAll(list,p));
 }
 let timer=null;
-q.addEventListener('input',()=>{cap=PAGE;clearTimeout(timer);timer=setTimeout(apply,90);});
+q.addEventListener('input',()=>{cap=PAGE;if(q.value.trim())loadIdx();clearTimeout(timer);timer=setTimeout(apply,90);});
+q.addEventListener('focus',()=>{if(q.value.trim())loadIdx();});
 function setMode(mode){
   secMode=(mode==='all')?null:mode;
   secBtns.forEach(b=>{
@@ -1818,10 +2086,157 @@ if(tocLinks.length){
   },{rootMargin:'-70px 0px -75% 0px'});
   heads.forEach(h=>io.observe(h));
   if(jumpSel) jumpSel.addEventListener('change',()=>{
-    const el=document.getElementById(jumpSel.value);
+    const id=jumpSel.value;
+    if(bkOn()){bkToId(id);return;}
+    const el=document.getElementById(id);
     if(el) el.scrollIntoView({block:'start'});
   });
+}
+/* ── 阅读模式：书页（分栏翻页）/ 滚动 ──
+   书页 = 正文按 CSS 分栏、整块左移一栏就是一页：翻页只写一次 transform，
+   不测量文字、不切 DOM、不重排，所以大文章也不卡。
+   取「某小节在第几页」= 元素左边缘与容器左边缘之差 ÷ 栏宽（两者一起被位移，差值不受影响）。 */
+const book=document.getElementById('book');
+const bookWrap=book?book.parentElement:null;
+const bookHost=document.querySelector('.article');
+const modeBtn=document.getElementById('mode');
+const BK_GAP=56;
+const wide=window.matchMedia('(min-width:821px)');
+let bkPage=0;
+function bkOn(){return !!book&&document.documentElement.getAttribute('data-read')==='book'&&wide.matches;}
+function bkStep(){return book.clientWidth+BK_GAP;}
+function bkHeads(){return document.querySelectorAll('.body h3[id],.body h4[id],.body h5[id],.body h6[id]');}
+function bkPageOf(el){
+  const r=el.getBoundingClientRect(),b=book.getBoundingClientRect();
+  return Math.max(0,Math.round((r.left-b.left)/bkStep()));
+}
+function bkNoAnim(){book.classList.add('noanim');requestAnimationFrame(()=>book.classList.remove('noanim'));}
+/* 锚点跳转可能让浏览器偷偷滚了裁剪容器，每次翻页都复位，免得页面错位 */
+function bkResetScroll(){[bookHost,bookWrap,book].forEach(e=>{if(e){e.scrollLeft=0;e.scrollTop=0;}});}
+/* 末页 = 最后一个子元素所在的栏（footer / pager 都设了 break-inside:avoid，不会被拆栏） */
+function bkPages(){
+  const last=book.lastElementChild;
+  return Math.max(1,(last?bkPageOf(last):0)+1);
+}
+function bkApply(p){
+  const pages=bkPages();
+  bkPage=Math.max(0,Math.min(pages-1,p));
+  book.style.transform='translate3d('+(-bkPage*bkStep())+'px,0,0)';
+  bkResetScroll();
+  const n=document.getElementById('pgnum');
+  if(n) n.textContent=(bkPage+1)+' / '+pages;
+  const pv=document.getElementById('pg-prev'),nx=document.getElementById('pg-next');
+  if(pv) pv.disabled=bkPage<=0;
+  if(nx) nx.disabled=bkPage>=pages-1;
+  bkSpy();
+}
+function bkSpy(){
+  if(!bkOn()||!tocLinks.length) return;
+  let hit=null;
+  bkHeads().forEach(h=>{if(bkPageOf(h)<=bkPage) hit=h;});
+  tocLinks.forEach(a=>a.classList.toggle('active',!!hit&&a.getAttribute('href')==='#'+hit.id));
+  if(jumpSel&&hit) jumpSel.value=hit.id;
+}
+function bkToId(id){
+  const el=document.getElementById(id);
+  if(!el||!bkOn()) return;
+  bkResetScroll();
+  bkApply(bkPageOf(el));
+}
+function bkSetMode(m,keep){
+  const d=document.documentElement;
+  let hit=null;
+  const hs=bkHeads();
+  if(keep&&hs.length){
+    if(m==='book'){          /* 滚动 → 书页：接着当前读到的小节翻 */
+      const top=(parseInt(getComputedStyle(d).getPropertyValue('--bar'))||56)+60;
+      hs.forEach(h=>{if(h.getBoundingClientRect().top<=top) hit=h;});
+    }else if(bkOn()){        /* 书页 → 滚动：滚到当前页开头那个小节 */
+      hs.forEach(h=>{if(bkPageOf(h)<=bkPage) hit=h;});
+    }
+  }
+  if(m==='book') d.setAttribute('data-read','book'); else d.removeAttribute('data-read');
+  try{localStorage.setItem('blog-read',m);}catch(e){}
+  if(modeBtn) modeBtn.setAttribute('aria-pressed',m==='book'?'true':'false');
+  syncBar();
+  requestAnimationFrame(()=>{
+    if(m==='book'){bkNoAnim();bkApply(hit?bkPageOf(hit):0);}
+    else if(hit) hit.scrollIntoView({block:'start'});
+  });
+}
+if(book&&modeBtn){
+  modeBtn.setAttribute('aria-pressed',bkOn()?'true':'false');
+  modeBtn.onclick=()=>bkSetMode(bkOn()?'scroll':'book',true);
+  const pv=document.getElementById('pg-prev'),nx=document.getElementById('pg-next');
+  if(pv) pv.onclick=()=>bkApply(bkPage-1);
+  if(nx) nx.onclick=()=>bkApply(bkPage+1);
+  addEventListener('hashchange',()=>{if(bkOn())bkToId((location.hash||'').slice(1));});
+  document.addEventListener('click',e=>{
+    if(bkOn()&&e.target.closest&&e.target.closest('.toc a')) bkResetScroll();
+  });
+  /* 滚轮翻页：竖向、横向都认，攒够阈值才翻，翻完短暂锁一下免得连跳好几页 */
+  let acc=0,lock=0;
+  addEventListener('wheel',e=>{
+    if(!bkOn()) return;
+    const now=Date.now();
+    if(now<lock){acc=0;return;}
+    acc+=Math.abs(e.deltaX)>Math.abs(e.deltaY)?e.deltaX:e.deltaY;
+    if(Math.abs(acc)<40) return;
+    const dir=acc>0?1:-1;
+    acc=0;lock=now+300;
+    bkApply(bkPage+dir);
+  },{passive:true});
+  addEventListener('keydown',e=>{
+    if(!bkOn()) return;
+    const a=document.activeElement;
+    if(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return;
+    if(e.key==='ArrowRight'||e.key==='PageDown'){e.preventDefault();bkApply(bkPage+1);}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();bkApply(bkPage-1);}
+  });
+  let rt=0;
+  addEventListener('resize',()=>{
+    if(rt) return;
+    rt=requestAnimationFrame(()=>{rt=0;if(bkOn()){bkNoAnim();bkApply(bkPage);}});
+  });
+  if(wide.addEventListener) wide.addEventListener('change',()=>{if(bkOn()){bkNoAnim();bkApply(bkPage);}});
+  if(document.fonts&&document.fonts.ready)
+    document.fonts.ready.then(()=>{if(bkOn()){bkNoAnim();bkApply(bkPage);}});
+  requestAnimationFrame(()=>{
+    if(!bkOn()) return;
+    const id=(location.hash||'').slice(1);
+    if(id) bkToId(id); else bkApply(0);
+  });
 }`;
+
+/* ── 全文搜索索引：首页首次搜索时才加载 assets/search.js，首屏不受影响。
+      用 <script> 而不是 fetch，是因为 fetch 在本地 file:// 预览下会被浏览器拦掉。 ── */
+function writeSearchIndex(pages: PageRef[]): void {
+  const idx = pages.map((p) => ({
+    u: p.outName,
+    t: p.entry.title,
+    s: p.secLabel,
+    d: p.entry.date || '',
+    g: p.entry.tags,
+    b: stripMd(p.entry.body).slice(0, 6000),
+  }));
+  mkdirSync(assetsDir, { recursive: true });
+  writeFileSync(
+    join(assetsDir, 'search.js'),
+    `window.__BLOG_IDX=${JSON.stringify(idx).replace(/</g, '\\u003c')};`,
+    'utf8',
+  );
+}
+
+// 默认分享卡片：static/og.png 原样带到站点根（CI 只上传 dist/，所以不能留在仓库根）
+function copyOgCard(): void {
+  const src = join(STATIC_DIR, 'og.png');
+  if (!existsSync(src)) return;
+  try {
+    copyFileSync(src, join(SITE_ROOT, 'og.png'));
+  } catch {
+    /* 复制失败不影响构建 */
+  }
+}
 
 /* ═══════════════ 主流程 ═══════════════ */
 
@@ -1931,10 +2346,12 @@ function main(): void {
     `</span>` +
     `<div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/>` +
     `<path d="M20 20l-3.5-3.5"/></svg>` +
-    `<input id="q" type="search" placeholder="搜索标题、标签、摘要…" autocomplete="off">` +
+    `<input id="q" type="search" placeholder="搜索标题、标签、正文…" autocomplete="off">` +
     `<kbd>/</kbd></div>` +
     `<span class="count hidden" id="cnt"></span>` +
-    `<button class="btn" id="theme">明/暗</button></header>`;
+    `<button class="btn" id="theme">明/暗</button>` +
+    LOOK_BAR +
+    `</header>`;
 
   // 首页左侧栏：置顶 / 栏目 / 标签 / 统计（窄屏隐藏；置顶文章同时在列表顶部带标记）
   const pinned = pages.filter((p) => p.entry.pinned);
@@ -1979,7 +2396,7 @@ function main(): void {
     `</aside>`;
 
   const home =
-    pageHead(SITE.name, desc) +
+    pageHead(SITE.name, desc, { url: '', type: 'website', imageW: OG_CARD_W, imageH: OG_CARD_H }) +
     bar +
     `<div class="shell">` +
     sidebar +
@@ -2005,6 +2422,8 @@ function main(): void {
   pages.forEach((p, i) => {
     writeFileSync(join(PAGES_OUT, `${p.slug}.html`), renderPostPage(pages, i, footer), 'utf8');
   });
+  writeSearchIndex(pages);
+  copyOgCard();
 
   // 清理改过名 / 已删除文章留下的旧页面（只动文章目录根部的 .html）
   const keepPages = new Set(pages.map((p) => `${p.slug}.html`));

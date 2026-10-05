@@ -65,7 +65,17 @@ node build.ts -o dist/index.html   # 指定输出（CI 用）
 - 侧栏可收起（«/»，localStorage 记忆，View Transition 过渡）；收起/窄屏时主内容居中。
 - 列表 >20 篇分批「加载更多」；筛选/搜索重置回第一批；搜索覆盖全部文章。
 - ≥1900px 正文列 840px；整体左侧锚定（不要「孤岛式」居中）。
+- 阅读外观（顶栏「外观」按钮，`LOOK_BAR`，两页共用、localStorage 跨页记忆）：两个维度 `data-paper`（纯白/米黄/豆绿/灰蓝）、`data-font`（无衬线/宋体/楷体/仿宋/圆体）。底色只改中性面 token（`--bg/--bg-alt/--bg-elv/--bg-mute/--divider`），明暗各一套，**不许碰品牌色**。字体一律用系统已装字体（mac/Windows/Android/Linux 各留一条回退），**不下载字体文件**。切换只改 `<html>` 属性，不重排正文。≤520px 面板改成贴上栏的通栏浮层（触发按钮靠右，再按 `right:0` 对齐会顶出左边界）。**不要再加花纹 / 背景图案**（以前试过，用户明确否掉）。
+- 书页模式里图片收得小（`max-height:min(26vh,240px);max-width:90%`）：图整块不拆栏，收小后一张图不再独占页面；要看大图点开灯箱。
+- 书页阅读模式（文章页顶栏「书页/滚动」，`data-read=book`）：正文走 CSS 分栏 + 整块 `translate3d` 翻页，翻页只写一次 transform，不测量文字、不重建 DOM。裁剪必须放在没被位移的外层 `.bookwrap`（裁在 `.book` 自己身上会让多出的栏跟着位移、翻出来是空白）；一页宽 = `book.clientWidth + 56`；「某小节在第几页」= 元素左边缘差 ÷ 页宽（`bkPageOf`），末页 = 最后一个子元素所在栏 + 1。交互：滚轮/←→/PageUp·PageDown、`‹ ›` 翻页条（`BOOKBAR`）、目录与 `hashchange` 跳页、`document.fonts.ready` 与 resize 重算。`prefers-reduced-motion` 下瞬时切换。≤820px 自动还原成普通滚动并隐藏开关（分栏在手机上不好读）。`:target` 落点高亮对滚动/书页都生效。
 - 响应式断点：1080 / 820 / 520 / 380。原生 JS，无框架；监听器一律 rAF 节流/防抖。
+
+## 分享卡片与全文搜索（2026-10 新增）
+
+- 分享卡片：`pageHead()` 统一输出 og / twitter 元信息 + `canonical`，绝对地址由 `SITE.url` 拼。`og:image` 取正文第一张图（用压缩后的 `assets/*.webp`，相对转绝对），没配图就退回默认卡片 `og.png`。
+- 默认卡片：源文件 `static/og-card.html`（1200×630 的静态设计）。构建时把同目录的 `static/og.png` 复制到站点根（CI 只上传 `dist/`，所以源文件不能放仓库根）。改卡片 = 改 HTML → 无头 Chrome 重新截图（命令在 `static/og-card.html` 顶部注释里）→ 覆盖 `static/og.png`。生成物 `/og.png` 已进 `.gitignore`，别提交。
+- 全文搜索：构建时用 `stripMd` 把正文抽成纯文本（每篇截 6000 字）写成 `assets/search.js`（`window.__BLOG_IDX`）。首页**首次搜索时才注入这个 script**，首屏不加载；只命中正文的文章会把列表摘要换成命中那句话。故意用 `<script>` 而非 `fetch`——`fetch` 在本地 `file://` 预览会被浏览器拦掉。搜索面板 / 下拉那套不要再加。
+- `SITE.url` 换域名或换仓库名时必须同步改，否则分享出去的绝对链接会指错。
 
 ## 质量门槛（提交前）
 
