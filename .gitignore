@@ -5,6 +5,7 @@ package-lock.json
 
 # 构建产物：由 build.ts / CI 生成，不纳入版本库
 index.html
+stats.html
 posts/*.html
 posts/**/*.html
 assets/

@@ -5,6 +5,7 @@
  * 输出的是一套「真博客」，而不是一本一次加载完的单页书：
  *   index.html         首页：顶栏 + 左侧栏（置顶 / 栏目 / 统计）+ 栏目标题 + 按时间倒序的简明文章列表
  *   posts/<slug>.html  文章页：标题 + 元信息 + 正文（小节 ≥2 时带左侧目录）+ 「更新的一篇 / 更早的一篇」两个链接
+ *   stats.html         写作统计：按月发文 / 栏目 / 标签分布（构建时算好，纯静态、无脚本）
  *   assets/            正文图片压缩后的成品
  * 首页只放简洁条目（标题 / 一行摘要 / 日期 · 栏目 · 标签），正文留在文章页；frontmatter 写 pin: true 可置顶。
  * 列表超过 20 篇时出现「加载更多」，分批显示；筛选 / 搜索时自动回到第一批。
@@ -37,6 +38,10 @@
  *   · HTML 里自动带宽度高度（加载时不跳动）、懒加载（不拖慢首屏）、点击可放大
  *   · 显示尺寸随文章自适应：宽图不溢出、小图不放大、竖长图限高，图注居中
  *   · 原图放哪都行，只要能相对 md 文件找到；建议留在 posts/ 里（推上 GitHub 才能自动重建）
+ *
+ * 配乐（可选，自托管）：frontmatter 写一行 `music: 曲名 | 文件名.mp3`（只写文件名则用文件名当曲名），
+ *   写 http(s) 链接则直接引用不复制。本地音频按内容哈希复制到 assets/，不转码；
+ *   文章页默认折叠成一行「配乐 · 曲名」，展开才出现播放器（preload="none"，不点不产生请求）。
  */
 
 import { createHash } from 'node:crypto';
@@ -61,6 +66,12 @@ const SITE = {
 // 栏目 = posts/ 下的文件夹，自动识别：新建 / 改名 / 移动文件夹都会自动生效，不需要改这里。
 // 这个列表只控制「显示顺序」：先按这里的名字排，没列到的按名称排在后面。
 const SECTION_ORDER: string[] = ['记录', '文章', '几何'];
+
+// 文章语气：只调结构标记的「冷暖 + 呼吸」，不动正文字号 / 行高 / 段距（那套曾被用户否掉）。
+// 键是 posts/ 下的文件夹名，改了文件夹名只会回落成默认语气（不报错、不影响构建）。
+const SECTION_TONE: Record<string, string> = {
+  那座山: 'prose',
+};
 
 // 图片处理
 const IMAGES = {
@@ -146,6 +157,9 @@ interface Entry {
   dir: string;      // md 所在目录（用于解析图片相对路径）
   relPath: string;  // 相对内容根目录的路径（用于提示信息）
   pinned: boolean;  // frontmatter 写 pin: true 时置顶
+  music?: { title: string; src: string };  // frontmatter music: 曲名 | 文件名.mp3
+  musicAbs?: string;                       // 解析到的本地音频绝对路径（外链时不设）
+  musicRel?: string;                       // 输出的站点根相对路径（或原样的外链）
 }
 
 interface Section {
@@ -231,11 +245,12 @@ function listMdFiles(dir: string): string[] {
 
 // 栏目 = posts/ 下包含 .md 的文件夹（含其子目录里的 md）。
 // 文件夹怎么改名 / 移动 / 新建都会自动生效，不需要改任何配置。
+// 例外：`.` 与 `_` 开头的文件夹一律不当栏目（`_drafts` / `_素材` 这类不会意外上线）。
 function discoverSections(): { dir: string; label: string }[] {
   let names: string[] = [];
   try {
     names = readdirSync(CONTENT, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !e.name.startsWith('_'))
       .map((e) => e.name);
   } catch {
     die(`内容目录不存在或无法读取：${CONTENT}\n提示：posts/ 是否被改名或移走了？`);
@@ -257,6 +272,16 @@ function discoverSections(): { dir: string; label: string }[] {
 }
 
 // 读取一个栏目（文件夹）下的全部文章
+// `music: 曲名 | 文件名.mp3` 或 `music: 文件名.mp3`（分隔符 | 或 ｜ 都认）
+function parseMusic(raw: string): { title: string; src: string } | undefined {
+  if (!raw) return undefined;
+  const [a, b] = raw.split(/[|｜]/).map((s) => s.trim());
+  const src = (b || a).trim();
+  if (!src) return undefined;
+  const title = (b ? a : '').trim() || src.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
+  return { title, src };
+}
+
 function loadSection(sec: { dir: string; label: string }): Entry[] {
   const dir = join(CONTENT, sec.dir);
   const entries: Entry[] = [];
@@ -277,7 +302,10 @@ function loadSection(sec: { dir: string; label: string }): Entry[] {
     const tags = splitTags(meta['tags']);
     const pinVal = (meta['pin'] || '').trim().toLowerCase();
     const pinned = ['true', '1', 'yes', 'y', '是'].includes(pinVal);
-    entries.push({ title, date, tags, body, file: name, dir: dirname(full), relPath: relative(CONTENT, full), pinned });
+    const music = parseMusic((meta['music'] || '').trim());
+    entries.push({
+      title, date, tags, body, file: name, dir: dirname(full), relPath: relative(CONTENT, full), pinned, music,
+    });
   }
   // 有日期的新的在前；无日期的排在后面，按文件名
   entries.sort((a, b) => {
@@ -314,8 +342,9 @@ function cleanSrc(raw: string): string {
   return p;
 }
 
-function resolveImagePath(rawSrc: string, mdDir: string): string | null {
-  const key = rawSrc + '\u0000' + mdDir;
+// 通用的本地资源解析：同目录 → 同目录的 <sub>/ 子目录 → 内容根 → 仓库根 → 全库按文件名兜底
+function resolveLocalPath(rawSrc: string, mdDir: string, sub: string): string | null {
+  const key = rawSrc + '\u0000' + mdDir + '\u0000' + sub;
   const hit = RESOLVE_CACHE.get(key);
   if (hit !== undefined) return hit;
   const compute = (): string | null => {
@@ -333,8 +362,7 @@ function resolveImagePath(rawSrc: string, mdDir: string): string | null {
         return null;
       }
     }
-    // 同目录 → 同目录里的 images/ 子目录 → 内容根 → 仓库根
-    const tries = [join(mdDir, p), join(mdDir, 'images', p), join(CONTENT, p), join(HERE, p)];
+    const tries = [join(mdDir, p), join(mdDir, sub, p), join(CONTENT, p), join(HERE, p)];
     for (const t of tries) {
       try {
         if (statSync(t).isFile()) return t;
@@ -352,6 +380,10 @@ function resolveImagePath(rawSrc: string, mdDir: string): string | null {
   const res = compute();
   RESOLVE_CACHE.set(key, res);
   return res;
+}
+
+function resolveImagePath(rawSrc: string, mdDir: string): string | null {
+  return resolveLocalPath(rawSrc, mdDir, 'images');
 }
 
 // 内容目录「文件名 → 绝对路径」索引（懒构建；重名时先到先得）。
@@ -427,6 +459,57 @@ function collectImageJobs(entries: Entry[]): void {
       if (!IMG_JOBS.has(abs)) IMG_JOBS.set(abs, { abs });
     }
   }
+}
+
+/* ─────────────── 配乐：自托管音频（不转码，按内容哈希复制到 assets/） ─────────────── */
+
+const MUSIC_INFOS = new Map<string, string>();          // 源文件绝对路径 → 站点根相对路径
+const MUSIC_JOBS = new Map<string, { abs: string }>();  // 去重后的待复制音频
+const MUSIC_KEEP = new Set<string>();                   // 输出文件名（图片清理步骤据此跳过）
+const MUSIC_MISSING: { src: string; from: string }[] = [];
+const MUSIC_BIG: { name: string; bytes: number }[] = [];
+const MUSIC_MAX_BYTES = 8 * 1024 * 1024;                // 超过就提示压缩（仓库 / Pages 都有体积上限）
+
+function collectMusicJobs(entries: Entry[]): void {
+  for (const e of entries) {
+    if (!e.music) continue;
+    const src = e.music.src;
+    if (/^https?:/i.test(src)) {
+      e.musicRel = src;   // 外链直接引用，不复制（自托管优先，但留条后路）
+      continue;
+    }
+    const abs = resolveLocalPath(src, e.dir, 'music');
+    if (!abs) {
+      MUSIC_MISSING.push({ src, from: e.relPath });
+      continue;
+    }
+    e.musicAbs = abs;
+    if (!MUSIC_JOBS.has(abs)) MUSIC_JOBS.set(abs, { abs });
+  }
+}
+
+function processAudio(): { n: number; fresh: number; bytes: number } {
+  let fresh = 0;
+  let bytes = 0;
+  if (MUSIC_JOBS.size === 0) return { n: 0, fresh: 0, bytes: 0 };
+  mkdirSync(assetsDir, { recursive: true });
+  for (const { abs } of MUSIC_JOBS.values()) {
+    const buf = readFileSync(abs);
+    bytes += buf.length;
+    const hash = createHash('sha1').update(buf).digest('hex').slice(0, 8);
+    const base = safeName(basename(abs).replace(/\.[^.]+$/, '')) || 'music';
+    const ext = ((/\.([^.]+)$/.exec(abs)?.[1] ?? 'mp3') as string).toLowerCase();
+    const name = `${base}-${hash}.${ext}`;
+    const dst = join(assetsDir, name);
+    if (!existsSync(dst)) {
+      copyFileSync(abs, dst);
+      fresh++;
+    }
+    MUSIC_KEEP.add(name);
+    MUSIC_INFOS.set(abs, `${IMAGES.dir}/${name}`);
+    if (buf.length > MUSIC_MAX_BYTES) MUSIC_BIG.push({ name: basename(abs), bytes: buf.length });
+  }
+  return { n: MUSIC_KEEP.size, fresh, bytes };
 }
 
 /* ── 尺寸解析（PNG / JPEG / GIF / WebP 头部，纯 Node，无依赖）── */
@@ -699,7 +782,7 @@ function processImages(): { stats: ImgStat[]; pruned: number; prunedBytes: numbe
   let prunedBytes = 0;
   const genRe = /^.+-[0-9a-f]{8}\.[a-z0-9]+$/i;
   for (const f of readdirSync(assetsDir)) {
-    if (!genRe.test(f) || referenced.has(f)) continue;
+    if (!genRe.test(f) || referenced.has(f) || MUSIC_KEEP.has(f)) continue;
     const p = join(assetsDir, f);
     try {
       const st = statSync(p);
@@ -1074,12 +1157,14 @@ const CSS = `
   --t1:rgba(60,60,67,1);--t2:rgba(60,60,67,.78);--t3:rgba(60,60,67,.56);
   --ink:#1e2029;
   --brand-1:#3451b2;--brand-2:#3a5ccc;--brand-soft:rgba(100,108,255,.12);
+  --mk:var(--brand-1);--mk-soft:var(--brand-soft);
   --green-1:#18794e;--green-soft:rgba(16,185,129,.13);
   --yellow-1:#915930;--yellow-soft:rgba(234,179,8,.15);
   --red-1:#b8272c;--red-soft:rgba(244,63,94,.12);
   --gray-1:#565a5f;--gray-soft:rgba(142,150,170,.15);
   --mark:rgba(234,179,8,.34);
-  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --ui-font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --font:var(--ui-font);
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
   --bar:56px;--side:clamp(230px,16vw,330px);
 }
@@ -1098,24 +1183,38 @@ const CSS = `
 
 /* ── 阅读外观：底色 / 字体（全局，存在 localStorage，换页也生效）
       底色只调中性面（背景与分隔线），不碰品牌色，保证「素雅」基调不变。── */
-/* 字体只列系统已装的：mac / Windows / Android / Linux 各留一条回退，不下载任何字体文件。
-   宋体 / 楷体 / 仿宋 是中文长文阅读最耐看的三种衬线，圆体偏柔和，放最后。 */
-html[data-font=serif]{--font:Georgia,"Songti SC","Source Han Serif SC","Noto Serif CJK SC",STSong,SimSun,serif}
-html[data-font=kai]{--font:"Kaiti SC",STKaiti,"TW-Kai",KaiTi,"Noto Serif CJK SC",serif}
+/* 字体全部用系统已装字体，不下载字体文件。默认「黑体」（苹方 / SF / Segoe / 思源黑体）：
+   屏幕长文最耐读，且拉丁与数字是等高（lining）字形，不会忽高忽低。
+   宋体档给「纸书感」，拉丁另配衬线族（Source Serif / Times），同样等高。 */
+html[data-font=serif]{--font:"Source Serif 4","Source Serif Pro","Times New Roman",Times,"Source Han Serif SC","Noto Serif CJK SC","Songti SC",STSong,"Noto Serif SC",SimSun,serif}
+html[data-font=kai]{--font:"LXGW WenKai","LXGW WenKai Screen","Kaiti SC",STKaiti,"TW-Kai",KaiTi,"Noto Serif CJK SC",serif}
 html[data-font=fangsong]{--font:"FangSong","STFangsong","FangSong_GB2312","Noto Serif CJK SC",serif}
 html[data-font=yuan]{--font:"Yuanti SC",YouYuan,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
-html[data-font=serif] .body,html[data-font=kai] .body,html[data-font=fangsong] .body{line-height:1.88}
-html[data-font=kai] .body{font-size:15.5px;letter-spacing:.015em}
+html[data-font=serif] .body,html[data-font=kai] .body,html[data-font=fangsong] .body{line-height:1.85}
+html[data-font=kai] .body{letter-spacing:.015em}
 html[data-theme=light][data-paper=cream]{--bg:#faf7f0;--bg-alt:#f4efe3;--bg-elv:#fffdf9;--bg-mute:#f1ead9;--divider:#e7e0d0}
 html[data-theme=light][data-paper=green]{--bg:#f6f9f4;--bg-alt:#eef3ea;--bg-elv:#fcfdfb;--bg-mute:#eaf0e4;--divider:#dee6d7}
 html[data-theme=light][data-paper=blue]{--bg:#f5f7fa;--bg-alt:#eef1f6;--bg-elv:#fcfdfe;--bg-mute:#e9eef5;--divider:#dce2eb}
 html[data-theme=dark][data-paper=cream]{--bg:#1d1b17;--bg-alt:#191713;--bg-elv:#242119;--bg-mute:#2e2a22;--divider:#332f26}
 html[data-theme=dark][data-paper=green]{--bg:#181d19;--bg-alt:#141814;--bg-elv:#1f2420;--bg-mute:#2a302a;--divider:#2b332c}
 html[data-theme=dark][data-paper=blue]{--bg:#181b21;--bg-alt:#14161b;--bg-elv:#1e2229;--bg-mute:#272c34;--divider:#2a3038}
+
+/* ── 文章语气（data-tone 挂在 <body>）：同一套排版骨架，只换结构标记的冷暖与呼吸，正文字号 / 行高 / 段距不变，
+      所以换语气不影响阅读节奏。散文（那座山）走温润茶褐，交易 / 系统文沿用品牌蓝。改这两行就能调冷暖。 ── */
+body[data-tone=prose]{--mk:#8b6a4a;--mk-soft:rgba(139,106,74,.10)}
+[data-theme=dark] body[data-tone=prose]{--mk:#d0aa80;--mk-soft:rgba(208,170,128,.14)}
+body[data-tone=prose] .article h1{font-weight:500;letter-spacing:.01em}
+/* 标题下的短记号：散文的「落款感」，比换整块底色克制得多 */
+body[data-tone=prose] .article h1::after{content:"";display:block;width:34px;height:2px;border-radius:2px;
+  margin:14px 0 0;background:var(--mk);opacity:.55}
+/* 章节前后多留一点气口，长散文才有翻页的呼吸感 */
+body[data-tone=prose] .body h3{margin-top:58px}
+body[data-tone=prose] .body h4{margin-top:42px}
+
 html{scroll-behavior:smooth;scroll-padding-top:calc(var(--bar) + 14px);overflow-y:scroll}
 /* 打开文章 / 后退：支持的浏览器整页平滑过渡（不支持则照常瞬时切换，无副作用） */
 @view-transition{navigation:auto}
-body{margin:0;background-color:var(--bg);color:var(--t1);font:15px/1.75 var(--font);
+body{margin:0;background-color:var(--bg);color:var(--t1);font:15px/1.75 var(--ui-font);
   -webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
 a{color:var(--brand-1);text-decoration:none}
 a:hover{color:var(--brand-2);text-decoration:underline;text-underline-offset:2px}
@@ -1136,17 +1235,17 @@ strong{font-weight:600;color:var(--t1)}
 .search input:focus{outline:0;border-color:var(--brand-1);background:var(--bg-elv)}
 .search svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);width:15px;height:15px;
   fill:none;stroke:var(--t3);stroke-width:2;pointer-events:none}
-.search kbd{position:absolute;right:8px;top:50%;transform:translateY(-50%);font:500 10px/1 var(--font);
+.search kbd{position:absolute;right:8px;top:50%;transform:translateY(-50%);font:500 10px/1 var(--ui-font);
   color:var(--t3);border:1px solid var(--divider);border-radius:4px;padding:2px 4px;background:var(--bg-elv)}
 .btn{height:30px;padding:0 11px;border-radius:999px;border:1px solid var(--divider);background:var(--bg-elv);
-  color:var(--t2);font:500 12px/1 var(--font);cursor:pointer;transition:border-color .18s,color .18s,background-color .18s;white-space:nowrap}
+  color:var(--t2);font:500 12px/1 var(--ui-font);cursor:pointer;transition:border-color .18s,color .18s,background-color .18s;white-space:nowrap}
 .btn:hover{border-color:var(--brand-2);color:var(--t1)}
 .btn[aria-pressed=true]{background:var(--brand-soft);border-color:var(--brand-1);color:var(--brand-1)}
 /* 顶栏筛选按钮：宽屏隐藏（导航在左侧栏），≤1080 侧栏消失时才显示 */
 .fsecs{display:none}
 .count{font-size:12px;color:var(--t3);white-space:nowrap;font-variant-numeric:tabular-nums}
 .jump{display:none;height:30px;max-width:38vw;padding:0 6px;border-radius:8px;border:1px solid var(--divider);
-  background:var(--bg-elv);color:var(--t2);font:500 12px/1 var(--font)}
+  background:var(--bg-elv);color:var(--t2);font:500 12px/1 var(--ui-font)}
 
 /* ── 外观面板（底色 / 字体）：沿用侧栏标签下拉那套自绘控件语言，不用原生 select ── */
 .look{position:relative}
@@ -1161,7 +1260,7 @@ strong{font-weight:600;color:var(--t1)}
 .look-k{flex:none;width:26px;font-size:12px;color:var(--t3)}
 .look-os{display:flex;flex-wrap:wrap;gap:6px}
 .look-o{padding:4px 10px;border-radius:999px;border:1px solid var(--divider);background:var(--bg-alt);
-  color:var(--t2);font:400 12px/1.5 var(--font);cursor:pointer;
+  color:var(--t2);font:400 12px/1.5 var(--ui-font);cursor:pointer;
   transition:border-color .15s,color .15s,background-color .15s}
 .look-o:hover{border-color:var(--brand-2);color:var(--t1)}
 .look-o[aria-pressed=true]{background:var(--brand-soft);border-color:var(--brand-1);color:var(--brand-1)}
@@ -1188,7 +1287,7 @@ body>main{margin-left:auto;margin-right:auto}
 .tagsd{position:relative}
 .tagsd-btn{display:flex;align-items:center;gap:7px;width:100%;height:30px;padding:0 10px;border-radius:8px;
   border:1px solid var(--divider);background:var(--bg-elv);color:var(--t2);
-  font:500 12.5px/1 var(--font);cursor:pointer;text-align:left;transition:border-color .18s,color .18s}
+  font:500 12.5px/1 var(--ui-font);cursor:pointer;text-align:left;transition:border-color .18s,color .18s}
 .tagsd-btn:hover{border-color:var(--brand-2);color:var(--t1)}
 .tagsd-btn:focus-visible{outline:2px solid var(--brand-soft);outline-offset:1px}
 .tagsd[data-open="1"] .tagsd-btn{border-color:var(--brand-1);color:var(--t1)}
@@ -1221,19 +1320,19 @@ body>main{margin-left:auto;margin-right:auto}
 .item:last-child{border-bottom:0}
 .item.cut{display:none}
 #more{display:block;margin:20px auto 6px;height:34px;padding:0 18px;font-size:12.5px}
-.ititle{display:block;font-size:16px;font-weight:600;line-height:1.5;color:var(--t1);
+.ititle{display:block;font-family:var(--font);font-size:16px;font-weight:600;line-height:1.5;color:var(--t1);
   letter-spacing:-.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ititle:hover{color:var(--brand-1);text-decoration:none}
 .pin-badge{display:inline-block;margin-right:7px;padding:4px 9px;border-radius:999px;
-  background:var(--bg-mute);color:var(--t3);font:400 11px/1 var(--font);vertical-align:2px}
-.iex{margin:5px 0 0;font-size:13.5px;line-height:1.7;color:var(--t2);
+  background:var(--bg-mute);color:var(--t3);font:400 11px/1 var(--ui-font);vertical-align:2px}
+.iex{margin:5px 0 0;font-family:var(--font);font-size:13.5px;line-height:1.7;color:var(--t2);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .imeta{margin-top:7px;font-size:12px;color:var(--t3);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .imeta .tag{margin-right:3px;vertical-align:1px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
-.tag{font:400 11px/1 var(--font);padding:4px 9px;border-radius:999px;background:var(--bg-mute);color:var(--t3)}
-.badge{font:500 11px/1 var(--font);padding:4px 9px;border-radius:999px;border:1px solid transparent}
+.tag{font:400 11px/1 var(--ui-font);padding:4px 9px;border-radius:999px;background:var(--bg-mute);color:var(--t3)}
+.badge{font:500 11px/1 var(--ui-font);padding:4px 9px;border-radius:999px;border:1px solid transparent}
 .gA{background:var(--green-soft);color:var(--green-1);border-color:var(--green-soft)}
 .gB{background:var(--yellow-soft);color:var(--yellow-1);border-color:var(--yellow-soft)}
 .gC{background:var(--gray-soft);color:var(--gray-1);border-color:var(--gray-soft)}
@@ -1257,6 +1356,15 @@ body>main{margin-left:auto;margin-right:auto}
 .src summary:hover{color:var(--brand-1)}
 .src .sbody{font-size:12.5px;line-height:1.8;color:var(--t2);padding:8px 0 2px;word-break:break-word;overflow-wrap:anywhere}
 
+/* ── 配乐：默认折叠成一行（不点不产生请求），展开才出现原生播放器；记号沿用「来源」那套 ▸ / ▾ ── */
+.music{margin:12px 0 0}
+.music summary{cursor:pointer;font-size:12.5px;color:var(--t3);list-style:none;user-select:none;transition:color .15s}
+.music summary::-webkit-details-marker{display:none}
+.music summary::before{content:"▸ ";color:var(--t3)}
+.music[open] summary::before{content:"▾ "}
+.music summary:hover{color:var(--mk)}
+.music audio{display:block;width:100%;margin-top:8px}
+
 body.plain-only .fields,body.plain-only .src{display:none}
 
 /* ── 文章页（宽屏：左侧目录 + 正文，沿用原书的目录联动；窄屏目录收进顶栏下拉）── */
@@ -1269,16 +1377,16 @@ body.plain-only .fields,body.plain-only .src{display:none}
 .toc a{display:flex;gap:6px;align-items:baseline;padding:3px 6px;border-radius:6px;font-size:12.5px;
   line-height:1.5;color:var(--t2);transition:background-color .15s,color .15s}
 .toc a.lv1{font-weight:600;color:var(--t1)}
-.toc a.lv1 i{color:var(--brand-1)}
+.toc a.lv1 i{color:var(--mk)}
 .toc a.lv2{padding-left:20px}
 .toc a.lv3{padding-left:34px}
 .toc a.lv4{padding-left:46px}
 .toc a:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
-.toc a.active{background:var(--brand-soft);color:var(--brand-1)}
+.toc a.active{background:var(--mk-soft);color:var(--mk)}
 .toc a i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;min-width:16px;text-align:right}
 .shell>.article,.shell>main{flex:1;min-width:0}
 .article{max-width:760px}
-.article h1{font-size:26px;font-weight:600;line-height:1.45;margin:2px 0 10px;letter-spacing:-.2px;
+.article h1{font-family:var(--font);font-size:26px;font-weight:600;line-height:1.45;margin:2px 0 10px;letter-spacing:-.2px;
   color:var(--ink);overflow-wrap:anywhere}
 .article .chips{margin:12px 0 22px}
 .pager{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin:36px 0 0;
@@ -1314,12 +1422,38 @@ html[data-read=book] #top{display:none}
 html[data-read=book] .bookbar{display:flex;align-items:center;justify-content:center;gap:12px;
   flex:none;height:42px;font-size:12px;color:var(--t3);font-variant-numeric:tabular-nums}
 .pgbtn{width:26px;height:26px;border-radius:6px;border:1px solid var(--divider);background:var(--bg-elv);
-  color:var(--t2);font:400 15px/1 var(--font);cursor:pointer;transition:border-color .15s,color .15s}
+  color:var(--t2);font:400 15px/1 var(--ui-font);cursor:pointer;transition:border-color .15s,color .15s}
 .pgbtn:hover:not(:disabled){border-color:var(--brand-1);color:var(--brand-1)}
 .pgbtn:disabled{opacity:.35;cursor:default}
 @media (prefers-reduced-motion:reduce){
   html[data-read=book] .book{transition:none}
 }
+
+/* ── 写作统计页：全部构建时算好，纯静态、无脚本、无外部服务 ── */
+.st-lead{margin:0 0 18px;font-size:14px;line-height:1.8;color:var(--t2)}
+.st-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 0 4px}
+.st-card{padding:13px 15px;border:1px solid var(--divider);border-radius:10px;background:var(--bg-alt)}
+.st-card b{display:block;font-size:23px;font-weight:650;line-height:1.2;color:var(--ink);
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.st-card span{display:block;margin-top:5px;font-size:12px;color:var(--t3)}
+.st-bars{display:flex;align-items:flex-end;gap:7px;margin:2px 0 6px;padding:0 2px 2px;
+  overflow-x:auto;scrollbar-width:thin}
+.st-col{flex:0 0 34px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px}
+.st-col i{display:block;width:100%;max-width:30px;border-radius:4px 4px 0 0;
+  background:var(--brand-1);opacity:.42;min-height:3px}
+.st-col.now i{opacity:.85}
+.st-n{font-size:11px;line-height:1;color:var(--t3);font-variant-numeric:tabular-nums}
+.st-col em{font-style:normal;font-size:11px;line-height:1.4;color:var(--t3);white-space:nowrap}
+.st-tab{width:100%;border-collapse:collapse;margin:2px 0 6px;font-size:13.5px}
+.st-tab th,.st-tab td{padding:8px 10px;border-bottom:1px solid var(--divider);text-align:left}
+.st-tab th{font-weight:500;font-size:12px;color:var(--t3)}
+.st-tab td.n{text-align:right;font-variant-numeric:tabular-nums;color:var(--t2)}
+.st-tab tr:last-child td{border-bottom:0}
+.st-tags{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 6px}
+.st-tag{display:inline-flex;align-items:baseline;gap:7px;padding:6px 11px;border-radius:999px;
+  background:var(--bg-mute);color:var(--t2);font-size:12.5px}
+.st-tag i{font-style:normal;font-size:11px;color:var(--t3);font-variant-numeric:tabular-nums}
+@media (max-width:520px){.st-cards{grid-template-columns:repeat(2,1fr)}}
 
 .hidden{display:none!important}
 .empty{color:var(--t3);font-size:14px;padding:40px 0;text-align:center}
@@ -1329,13 +1463,14 @@ footer a{color:var(--t2)}
 
 #top{position:fixed;right:16px;bottom:16px;z-index:40;width:42px;height:42px;border-radius:50%;
   border:1px solid var(--divider);background:var(--bg-elv);color:var(--t2);cursor:pointer;
-  font:400 17px/1 var(--font);box-shadow:0 2px 12px rgba(0,0,0,.14);
+  font:400 17px/1 var(--ui-font);box-shadow:0 2px 12px rgba(0,0,0,.14);
   opacity:0;pointer-events:none;transition:opacity .2s,color .18s}
 #top.show{opacity:1;pointer-events:auto}
 #top:hover{color:var(--brand-1);border-color:var(--brand-1)}
 
 /* ── 正文排版 ── */
-.body{margin:0;font-size:15px;line-height:1.8;color:var(--t1);overflow-wrap:anywhere}
+.body{margin:0;font-family:var(--font);font-size:15.5px;line-height:1.8;color:var(--t1);overflow-wrap:anywhere;
+  font-variant-numeric:lining-nums}
 .body p{margin:0 0 10px}
 .body p:last-child{margin-bottom:2px}
 /* 标题四级：标记形态（横线色块 → 底线色段 → 左竖条 → 前缀方块）与色深同时递进。
@@ -1344,28 +1479,28 @@ footer a{color:var(--t2)}
 /* #  · 章：顶部通栏细线 + 左端色块（全宽标记，最高层） */
 .body h3{font-size:20px;font-weight:650;margin:46px 0 14px;padding-top:15px;letter-spacing:-.3px;
   position:relative;border-top:1px solid var(--divider)}
-.body h3::before{content:"";position:absolute;left:0;top:-2px;width:36px;height:3px;border-radius:2px;background:var(--brand-1)}
+.body h3::before{content:"";position:absolute;left:0;top:-2px;width:36px;height:3px;border-radius:2px;background:var(--mk)}
 /* ## · 节：底部细线 + 左端色段（半宽标记） */
 .body h4{font-size:17px;font-weight:640;margin:34px 0 12px;padding-bottom:8px;
   position:relative;border-bottom:1px solid var(--divider)}
 .body h4::after{content:"";position:absolute;left:0;bottom:-1px;width:30px;height:2px;border-radius:2px;
-  background:var(--brand-1);opacity:.8}
+  background:var(--mk);opacity:.8}
 /* ### · 目：左侧竖条（局部标记） */
 .body h5{font-size:16px;margin:26px 0 9px;padding-left:11px;position:relative}
 .body h5::before{content:"";position:absolute;left:0;top:.3em;bottom:.3em;width:3px;border-radius:2px;
-  background:var(--brand-1);opacity:.55}
+  background:var(--mk);opacity:.55}
 /* #### · 点：前缀方块（最小标记，色最浅）；加粗正文没有方块，仍一眼可辨 */
 .body h6{font-size:15px;margin:22px 0 8px;color:var(--t2);font-weight:600;padding-left:16px;position:relative}
 .body h6::before{content:"";position:absolute;left:1px;top:.5em;width:7px;height:7px;border-radius:2px;
-  background:var(--brand-1);opacity:.34}
+  background:var(--mk);opacity:.34}
 /* 从提要 / 目录点进来的落点：整行中性底 + 一道品牌色左耳，一眼能认出来。
    纯 CSS（:target），不用脚本也不做动画，所以「减弱动态效果」下同样可见。 */
 .body h3:target,.body h4:target,.body h5:target,.body h6:target{
-  background:var(--bg-alt);border-radius:6px;box-shadow:inset 3px 0 0 var(--brand-1)}
+  background:var(--bg-alt);border-radius:6px;box-shadow:inset 3px 0 0 var(--mk)}
 .body ul,.body ol{margin:0 0 10px;padding-left:22px}
 .body li{margin:3px 0}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
-.body blockquote{margin:0 0 10px;padding:9px 13px;background:var(--brand-soft);border-left:3px solid var(--brand-1);border-radius:0 8px 8px 0;color:var(--t1)}
+.body blockquote{margin:0 0 10px;padding:9px 13px;background:var(--mk-soft);border-left:3px solid var(--mk);border-radius:0 8px 8px 0;color:var(--t1)}
 .body blockquote p{margin:0}
 /* 提醒块（Obsidian callout：> [!warning] 标题）*/
 .body .co{margin:0 0 12px;padding:9px 13px;border-left:3px solid var(--gray-1);border-radius:0 8px 8px 0;background:var(--gray-soft);color:var(--t1)}
@@ -1584,7 +1719,7 @@ const LOOK_BAR =
   `<button class="btn" id="look-btn" type="button" aria-expanded="false" aria-haspopup="true">外观</button>` +
   `<div class="look-panel" id="look-panel">` +
   lookRow('底色', 'paper', [['', '纯白'], ['cream', '米黄'], ['green', '豆绿'], ['blue', '灰蓝']]) +
-  lookRow('字体', 'font', [['', '无衬线'], ['serif', '宋体'], ['kai', '楷体'], ['fangsong', '仿宋'], ['yuan', '圆体']]) +
+  lookRow('字体', 'font', [['', '黑体'], ['serif', '宋体'], ['kai', '楷体'], ['fangsong', '仿宋'], ['yuan', '圆体']]) +
   `</div></div>`;
 
 // 书页模式的翻页条（只在书页模式下出现，显隐交给 CSS）
@@ -1607,6 +1742,7 @@ interface HeadMeta {
   type?: 'website' | 'article';
   published?: string;
   tags?: string[];
+  bodyAttr?: string;               // 直接拼到 <body> 上的属性（文章语气 data-tone 用）
 }
 const OG_CARD = 'og.png';          // 默认分享图（源文件 static/og.png，构建时复制到站点根）
 const OG_CARD_W = 1200;
@@ -1663,7 +1799,7 @@ function pageHead(title: string, desc: string, meta: HeadMeta = {}): string {
     `var v=localStorage.getItem('blog-'+k);if(v)d.setAttribute('data-'+k,v);});` +
     `if(localStorage.getItem('blog-read')==='book')d.setAttribute('data-read','book');` +
     `}catch(e){}</script>` +
-    `</head><body>`
+    `</head><body${meta.bodyAttr || ''}>`
   );
 }
 
@@ -1759,9 +1895,19 @@ function renderPostPage(pages: PageRef[], i: number, footer: string): string {
     `<button class="btn" id="theme">明/暗</button>` +
     LOOK_BAR +
     `</header>`;
+  const tone = SECTION_TONE[p.secLabel];
+  const musicSrc = p.entry.musicRel
+    ? /^https?:/i.test(p.entry.musicRel) ? p.entry.musicRel : PAGE_PREFIX + p.entry.musicRel
+    : '';
+  const musicBar =
+    p.entry.music && musicSrc
+      ? `<details class="music"><summary>配乐 · ${esc(p.entry.music.title)}</summary>` +
+        `<audio controls preload="none" src="${escAttr(musicSrc)}"></audio></details>`
+      : '';
   const main =
     `<main class="article"><h1>${esc(p.entry.title)}</h1>` +
     chipsRow(p) +
+    musicBar +
     // pager / footer 放进 .book：滚动模式下和原来一样是普通块级顺序；书页模式下会排到最后一页
     `<div class="bookwrap"><div class="book" id="book"><div class="body">${bodyHtml}</div>` +
     (pg.length ? `<nav class="pager">${pg.join('')}</nav>` : '') +
@@ -1780,6 +1926,7 @@ function renderPostPage(pages: PageRef[], i: number, footer: string): string {
       image: cover ? cover.rel : OG_CARD,
       imageW: cover ? cover.w : OG_CARD_W,
       imageH: cover ? cover.h : OG_CARD_H,
+      bodyAttr: tone ? ` data-tone="${escAttr(tone)}"` : '',
     }) +
     bar +
     (hasToc ? `<div class="shell">${toc}${main}</div>` : main) +
@@ -1881,6 +2028,21 @@ if(lookEl&&lookBtn){
     if(e.key==='Escape'&&lookEl.getAttribute('data-open')==='1'){lookOpen(false);lookBtn.focus();}
   });
   syncLook();
+}
+/* 访问流畅：鼠标停在站内链接上就预取那一页，点下去几乎瞬开（配合整页 View Transition）。
+   只在 hover（有意图）时触发、每个链接只取一次；外链 / 锚点 / 省流或慢速网络都不预取。 */
+const conn=navigator.connection;
+if(!conn||(!conn.saveData&&!/^(slow-2g|2g|3g)$/.test(conn.effectiveType||''))){
+  document.addEventListener('pointerover',e=>{
+    const a=e.target&&e.target.closest?e.target.closest('a[href]'):null;
+    if(!a||a.dataset.pf||a.target||a.hasAttribute('download')) return;
+    const href=a.getAttribute('href')||'';
+    if(!/\\.html?($|[?#])/.test(href)||/^([a-z]+:)?\\/\\//i.test(href)||href.charAt(0)==='#') return;
+    a.dataset.pf='1';
+    const l=document.createElement('link');
+    l.rel='prefetch';l.href=href;
+    document.head.appendChild(l);
+  },{passive:true});
 }`;
 
 // 首页：只搜列表（标题 / 标签 / 摘要，正文不在 DOM 里）+ 栏目筛选 + 计数
@@ -1901,7 +2063,13 @@ let cap=PAGE;
    加载完再重跑一次筛选，把「正文里命中」的文章补进列表，并用一句话摘要标出命中位置。 */
 let IDX=null,idxLoaded=false,idxLoading=false,byHref=null;
 const exOrig=new Map();
-items.forEach(it=>{const e=it.querySelector('.iex');if(e)exOrig.set(it,e.textContent);});
+items.forEach(it=>{
+  const e=it.querySelector('.iex');
+  if(e)exOrig.set(it,e.textContent);
+  /* 标题/标签/摘要拼一份小写缓存：每次敲键都重建 300 份字符串没必要。
+     摘要有可能在正文命中时被换成 snippet，所以缓存必须取「原始」文本，且只算一次。 */
+  it._hay=it.textContent.toLowerCase();
+});
 function loadIdx(){
   if(idxLoaded||idxLoading) return;
   idxLoading=true;
@@ -1973,7 +2141,7 @@ function apply(){
     const ex=it.querySelector('.iex');
     if(ex) ex.textContent=exOrig.get(it)||'';
     let ok=(secMode===null||it.getAttribute('data-sec')===secMode);
-    if(ok&&term&&!hasAll(it.textContent.toLowerCase(),parts)){
+    if(ok&&term&&!hasAll(it._hay,parts)){
       // 标题 / 摘要 / 标签没命中 → 再翻正文索引；命中就把摘要换成正文里那句话
       ok=false;
       const r=recOf(it);
@@ -1994,7 +2162,12 @@ function apply(){
   if(tagsd) tagsdSync(term);
   const sc=document.getElementById('sec-count');
   if(sc) sc.textContent=shown+' 篇';
-  parts.forEach(p=>markAll(list,p));
+  /* 只给「这一批真正显示出来」的条目加高亮：之前是对整张列表扫一遍，
+     文章多了以后 90% 的 DOM 改动都花在被 display:none 藏起来的条目上。 */
+  if(parts.length){
+    const visible=matched.slice(0,cap);
+    parts.forEach(p=>visible.forEach(it=>markAll(it,p)));
+  }
 }
 let timer=null;
 q.addEventListener('input',()=>{cap=PAGE;if(q.value.trim())loadIdx();clearTimeout(timer);timer=setTimeout(apply,90);});
@@ -2238,6 +2411,105 @@ function copyOgCard(): void {
   }
 }
 
+/* ── 写作统计页：全部在构建时算好，输出一张纯静态页（无脚本、无埋点、无外部服务）。
+      字数按「去掉空白后的字符数」算（中文习惯，标点也算一个），没写日期的文章不计入月度。 ── */
+function wordCount(text: string): number {
+  return text.replace(/\s+/g, '').length;
+}
+function fmtSep(n: number): string {
+  return n.toLocaleString('en-US');
+}
+
+function renderStatsPage(pages: PageRef[]): string {
+  const wordsOf = (p: PageRef): number => wordCount(stripMd(p.entry.body));
+  const total = pages.length;
+  const totalWords = pages.reduce((a, p) => a + wordsOf(p), 0);
+  const dated = pages.filter((p) => p.entry.date);
+  const days = new Set(dated.map((p) => p.entry.date)).size;
+
+  const byMonth = new Map<string, number>();
+  for (const p of dated) byMonth.set(p.entry.date.slice(0, 7), (byMonth.get(p.entry.date.slice(0, 7)) || 0) + 1);
+  let months = [...byMonth.keys()].sort();
+  if (months.length > 24) months = months.slice(-24);
+  const maxN = Math.max(1, ...months.map((m) => byMonth.get(m) || 0));
+  const nowMonth = new Date().toISOString().slice(0, 7);
+  const bars = months
+    .map((m) => {
+      const n = byMonth.get(m) || 0;
+      const h = Math.max(3, Math.round((n / maxN) * 104));
+      return (
+        `<div class="st-col${m === nowMonth ? ' now' : ''}" title="${m}：${n} 篇">` +
+        `<span class="st-n">${n}</span><i style="height:${h}px"></i>` +
+        `<em>${Number(m.slice(5))}月</em></div>`
+      );
+    })
+    .join('');
+
+  const secAgg = new Map<string, { n: number; w: number }>();
+  for (const p of pages) {
+    const cur = secAgg.get(p.secLabel) || { n: 0, w: 0 };
+    cur.n++;
+    cur.w += wordsOf(p);
+    secAgg.set(p.secLabel, cur);
+  }
+  const secRows = [...secAgg.entries()]
+    .sort((a, b) => b[1].n - a[1].n || (a[0] < b[0] ? -1 : 1))
+    .map(
+      ([label, v]) =>
+        `<tr><td>${esc(label)}</td><td class="n">${v.n}</td>` +
+        `<td class="n">${fmtSep(v.w)}</td><td class="n">${fmtSep(Math.round(v.w / v.n))}</td></tr>`,
+    )
+    .join('');
+
+  const tagAgg = new Map<string, number>();
+  for (const p of pages) for (const t of p.entry.tags) tagAgg.set(t, (tagAgg.get(t) || 0) + 1);
+  const tags = [...tagAgg.entries()]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .slice(0, 16)
+    .map(([t, n]) => `<span class="st-tag">#${esc(t)}<i>${n}</i></span>`)
+    .join('');
+
+  const longest = pages.reduce((a, p) => (wordsOf(p) > wordsOf(a) ? p : a), pages[0]);
+  const cards =
+    `<div class="st-cards">` +
+    `<div class="st-card"><b>${total}</b><span>篇文章</span></div>` +
+    `<div class="st-card"><b>${fmtSep(totalWords)}</b><span>累计字数</span></div>` +
+    `<div class="st-card"><b>${total ? fmtSep(Math.round(totalWords / total)) : 0}</b><span>平均每篇</span></div>` +
+    `<div class="st-card"><b>${days}</b><span>记录天数</span></div>` +
+    `</div>`;
+
+  const body =
+    `<h3>概览</h3>` +
+    `<p class="st-lead">共 ${total} 篇，累计 ${fmtSep(totalWords)} 字${days ? `，分布在 ${days} 天里` : ''}。` +
+    (longest ? `最长的一篇是《${esc(longest.entry.title)}》，${fmtSep(wordsOf(longest))} 字。` : '') +
+    (total > dated.length ? `有 ${total - dated.length} 篇没写日期，不计入下面的按月统计。` : '') +
+    `</p>` +
+    cards +
+    (months.length ? `<h3>每月发文</h3><div class="st-bars">${bars}</div>` : '') +
+    (secRows ? `<h3>栏目</h3><table class="st-tab"><thead><tr><th>栏目</th><th class="n">篇数</th><th class="n">字数</th><th class="n">平均</th></tr></thead><tbody>${secRows}</tbody></table>` : '') +
+    (tags ? `<h3>标签</h3><div class="st-tags">${tags}</div>` : '');
+
+  const bar =
+    `<header class="bar"><a class="back" href="${escAttr(basename(OUT_FILE))}">← 返回首页</a>` +
+    `<div class="brand">${esc(SITE.name)}</div><div class="spacer"></div>` +
+    `<button class="btn" id="theme">明/暗</button>` + LOOK_BAR + `</header>`;
+  const main = `<main class="article"><h1>写作统计</h1><div class="body">${body}</div></main>`;
+  return (
+    pageHead(`写作统计 · ${SITE.name}`, `${SITE.name}的写作量统计：按月发文、栏目与标签分布。`, {
+      title: '写作统计',
+      url: 'stats.html',
+      imageW: OG_CARD_W,
+      imageH: OG_CARD_H,
+    }) +
+    bar +
+    main +
+    TOP_BTN +
+    '<script>' +
+    JS_BASE +
+    '</script></body></html>'
+  );
+}
+
 /* ═══════════════ 主流程 ═══════════════ */
 
 function main(): void {
@@ -2267,9 +2539,18 @@ function main(): void {
   IMG_INFOS.clear();
   IMG_JOBS.clear();
   IMG_MISSING.length = 0;
+  MUSIC_INFOS.clear();
+  MUSIC_JOBS.clear();
+  MUSIC_KEEP.clear();
+  MUSIC_MISSING.length = 0;
+  MUSIC_BIG.length = 0;
   RESOLVE_CACHE.clear();
   const allEntries = nonEmpty.flatMap((s) => s.entries);
   collectImageJobs(allEntries);
+  collectMusicJobs(allEntries);
+  // 先落地配乐（文件名进 MUSIC_KEEP），后面的图片清理步骤才不会把音频当垃圾删掉
+  const music = processAudio();
+  for (const e of allEntries) if (e.musicAbs) e.musicRel = MUSIC_INFOS.get(e.musicAbs);
   const img = processImages();
 
   // 合并时间线：两栏目混在一起按日期倒序，无日期的排在最后
@@ -2328,8 +2609,10 @@ function main(): void {
   const desc =
     SITE.description ||
     `${SITE.name}：${counts || '复盘记录与主题文章'}${latest ? `，最近更新 ${latest}` : ''}。`;
-  const footer =
-    `<footer>${esc(SITE.name)}${counts ? `，共 ${total} 篇（${counts}）` : ''}${latest ? `，最近更新 ${latest}` : ''}。</footer>`;
+  // prefix：从当前页面回到站点根的相对前缀（文章页在 posts/ 里，取 '../'）
+  const footerFor = (prefix: string): string =>
+    `<footer>${esc(SITE.name)}${counts ? `，共 ${total} 篇（${counts}）` : ''}${latest ? `，最近更新 ${latest}` : ''}。 ` +
+    `<a href="${prefix}stats.html">写作统计</a></footer>`;
 
   const bar =
     `<header class="bar"><h1>${esc(SITE.name)}<small>${esc(small)}</small></h1>` +
@@ -2393,6 +2676,8 @@ function main(): void {
           .join('') +
         `</div></div></div>`
       : '') +
+    `<div class="sblock"><div class="gt">更多</div>` +
+    `<a class="sitem" href="stats.html"><span>写作统计</span></a></div>` +
     `</aside>`;
 
   const home =
@@ -2407,7 +2692,7 @@ function main(): void {
     (total > 0
       ? `<div class="empty hidden" id="empty">没有匹配的内容</div>`
       : `<div class="empty" id="empty">还没有内容：去 ${CONTENT_DIR}/ 里写第一篇吧</div>`) +
-    footer +
+    footerFor('') +
     `</main></div>` +
     TOP_BTN +
     '<script>' +
@@ -2420,8 +2705,9 @@ function main(): void {
 
   if (pages.length > 0) mkdirSync(PAGES_OUT, { recursive: true });
   pages.forEach((p, i) => {
-    writeFileSync(join(PAGES_OUT, `${p.slug}.html`), renderPostPage(pages, i, footer), 'utf8');
+    writeFileSync(join(PAGES_OUT, `${p.slug}.html`), renderPostPage(pages, i, footerFor(PAGE_PREFIX)), 'utf8');
   });
+  writeFileSync(join(SITE_ROOT, 'stats.html'), renderStatsPage(pages), 'utf8');
   writeSearchIndex(pages);
   copyOgCard();
 
@@ -2495,6 +2781,15 @@ function main(): void {
   }
   if (IMG_JOBS.size > 0 && IMAGES.enabled && !hasCmd('cwebp') && !hasCmd('magick') && !hasCmd('convert') && !hasCmd('sips')) {
     console.warn('未找到任何图片压缩工具（cwebp / ImageMagick / sips），图片按原样复制');
+  }
+  if (music.n > 0) {
+    console.log(`配乐 ${music.n} 首 ｜ 新复制 ${music.fresh} ｜ 合计 ${fmtBytes(music.bytes)}（自托管，未转码）`);
+  }
+  for (const m of MUSIC_MISSING) {
+    console.warn(`找不到配乐文件：${m.src}（来自 ${m.from}）—— 已跳过该篇播放器`);
+  }
+  for (const b of MUSIC_BIG) {
+    console.warn(`配乐偏大：${b.name}（${fmtBytes(b.bytes)}）—— 建议压到 96–128kbps 再提交，仓库和 Pages 都有体积上限`);
   }
 }
 
