@@ -1016,8 +1016,6 @@ const CALLOUTS: Record<string, [string, string]> = {
   failure: ['danger', '失败'], fail: ['danger', '失败'], missing: ['danger', '缺失'],
   danger: ['danger', '危险'], error: ['danger', '错误'], bug: ['danger', '缺陷'],
   quote: ['quote', '引用'], cite: ['quote', '引用'],
-  // 复盘字段卡：`> [!review] 复盘` 里每条 `字段：值` 渲染成一行（品种/方向/理由/执行/情绪/结论…）
-  review: ['review', '复盘'], journal: ['review', '复盘'],
 };
 
 // 开头提要里的 [[#小节标题]] 内链：正文渲染完才知道每节最终拿到哪个锚点（h-1、h-2…），所以收尾统一替换
@@ -1117,24 +1115,6 @@ function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): strin
               `<summary class="co-t">${inline(title || label, mdDir, prefix)}</summary>` +
               cbody.map((t) => `<p>${inline(t, mdDir, prefix)}</p>`).join('') +
               `</details>`,
-          );
-          continue;
-        }
-        if (kind === 'review') {
-          // 每条 `字段：值`（列表记号可省略）→ 一行；其余行按普通段落排在卡片下面
-          const rows: string[] = [];
-          const notes: string[] = [];
-          for (const t of cbody) {
-            const rm = /^\s*(?:[-*+]\s+)?([^：:]{1,14})\s*[：:]\s*(.+?)\s*$/.exec(t);
-            if (rm) rows.push(`<div class="rv-r"><b>${esc(rm[1].trim())}</b><span>${inline(rm[2], mdDir, prefix)}</span></div>`);
-            else notes.push(t);
-          }
-          out.push(
-            `<div class="co co-review">` +
-              `<div class="co-t">${inline(title || label, mdDir, prefix)}</div>` +
-              rows.join('') +
-              notes.map((t) => `<p>${inline(t, mdDir, prefix)}</p>`).join('') +
-              `</div>`,
           );
           continue;
         }
@@ -1484,15 +1464,6 @@ html:not(.js) .pl audio{display:block;width:100%;margin:10px 0 2px}
 .pager a small{font-size:11.5px;color:var(--t3)}
 .pager a span{font-weight:500;overflow-wrap:anywhere}
 .pager .older{margin-left:auto;text-align:right}
-/* 文末「相关文章」：构建时按共同标签算好，纯静态、零客户端成本 */
-.rel{margin:30px 0 0;border-top:1px solid var(--divider);padding-top:14px}
-.rel-t{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--t3);margin:0 0 4px}
-.rel-t::before{content:"";width:13px;height:2px;border-radius:2px;background:var(--mk)}
-.rel-i{display:flex;align-items:baseline;gap:10px;padding:5px 0;font-size:14px;line-height:1.6;
-  color:var(--t1);overflow-wrap:anywhere}
-.rel-i:hover{color:var(--brand-1);text-decoration:none}
-.rel-tt{flex:1;min-width:0;font-weight:500}
-.rel-mt{flex:none;font-size:11.5px;color:var(--t3);font-variant-numeric:tabular-nums}
 
 /* ── 书页模式：正文走 CSS 分栏，翻页只做一次 transform（不测量文字、不重建 DOM，所以不卡）──
       分栏高度固定后，溢出的内容会自动排到下一栏；整块左移一栏的宽度就是一页。
@@ -1508,8 +1479,7 @@ html[data-read=book] .book{height:100%;columns:1;column-gap:56px;column-fill:aut
   transition:transform .3s cubic-bezier(.22,.61,.36,1)}
 html[data-read=book] .book.noanim{transition:none}
 html[data-read=book] .body figure,html[data-read=book] .body pre.code,html[data-read=book] .body .co,
-html[data-read=book] .body li,html[data-read=book] .rel,html[data-read=book] .pager,
-html[data-read=book] .book>footer{break-inside:avoid}
+html[data-read=book] .body li,html[data-read=book] .pager,html[data-read=book] .book>footer{break-inside:avoid}
 html[data-read=book] .body h3,html[data-read=book] .body h4,html[data-read=book] .body h5{break-after:avoid}
 /* 书页模式里图片收得比滚动模式小得多：一页只有一栏，图一大正文就没地方了。
    图整块不拆栏（figure 上是 break-inside:avoid），收到 26vh / 240px 后一张图只占一小块，
@@ -1638,17 +1608,6 @@ footer a{color:var(--t2)}
 .body .co-danger .co-t{color:var(--red-1)}
 .body .co-question{border-left-color:var(--gray-1);background:var(--gray-soft)}
 .body .co-question .co-t{color:var(--gray-1)}
-/* 复盘字段卡（> [!review]）：固定字段一条一行，扫一眼就能看全。
-   中性面 + 一道结构色左耳，和提要同一套语言；散文栏目下 --mk 自动变茶褐。 */
-.body .co-review{background:var(--bg-alt);border:1px solid var(--divider);border-left:3px solid var(--mk);padding:11px 14px}
-.body .co-review .co-t{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--mk);margin:0 0 5px;letter-spacing:.02em}
-.body .co-review .co-t::before{content:"";width:13px;height:2px;border-radius:2px;background:var(--mk)}
-.body .co-review .rv-r{display:grid;grid-template-columns:4.4em 1fr;gap:10px;padding:6px 0;
-  font-size:13.5px;line-height:1.75;color:var(--t1)}
-.body .co-review .rv-r+.rv-r{border-top:1px solid var(--divider)}
-.body .co-review .rv-r b{font-weight:500;font-size:12.5px;color:var(--t3)}
-.body .co-review .rv-r>span{min-width:0;overflow-wrap:anywhere}
-.body .co-review>p{font-size:13.5px;color:var(--t2);margin:8px 0 0}
 /* 删除线与任务清单（Obsidian 常用格式）*/
 .body del{color:var(--t3)}
 .body li.task{list-style:none}
@@ -1738,7 +1697,7 @@ footer a{color:var(--t2)}
   main{max-width:none;padding:0}
   .item{break-inside:avoid;border-color:#ccc}
   .body img{max-height:none}
-  .pager,.rel{display:none}
+  .pager{display:none}
   body{font-size:11pt}
 }
 `;
@@ -1795,15 +1754,9 @@ function stripTags(s: string): string {
   return s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// 复盘字段卡（> [!review]）整块去掉：列表摘要和全文搜索留给真正的正文，
-// 不让「品种：/方向：」这些固定字段占掉提要的位置（字段本身仍进搜索索引与字数统计）。
-function stripReviewBlock(md: string): string {
-  return md.replace(/^[ \t]*>[ \t]*\[!(?:review|journal)\][^\n]*\n(?:[ \t]*>[^\n]*\n?)*/gim, '');
-}
-
 // 首页列表摘要：默认约 100 字
 function excerptOf(md: string, n = 100): string {
-  const t = stripMd(stripReviewBlock(md));
+  const t = stripMd(md);
   return cpLen(t) <= n ? t : cpSlice(t, 0, n) + '…';
 }
 
@@ -1957,29 +1910,6 @@ function renderListItem(p: PageRef): string {
   );
 }
 
-// 文末「相关文章」：共同标签越多越靠前，同栏目加一点分；全在构建时算好，前端零成本。
-function relatedPosts(pages: PageRef[], i: number, n = 3): PageRef[] {
-  const me = pages[i];
-  if (me.entry.tags.length === 0) return [];
-  const mine = new Set(me.entry.tags);
-  const scored: { p: PageRef; s: number }[] = [];
-  for (let j = 0; j < pages.length; j++) {
-    if (j === i) continue;
-    const other = pages[j];
-    let shared = 0;
-    for (const t of other.entry.tags) if (mine.has(t)) shared++;
-    if (shared === 0) continue;
-    scored.push({ p: other, s: shared * 10 + (other.secLabel === me.secLabel ? 1 : 0) });
-  }
-  scored.sort(
-    (a, b) =>
-      b.s - a.s ||
-      (b.p.entry.date || '').localeCompare(a.p.entry.date || '') ||
-      (a.p.slug < b.p.slug ? -1 : a.p.slug > b.p.slug ? 1 : 0),
-  );
-  return scored.slice(0, n).map((x) => x.p);
-}
-
 // 文章页：正文用同一套 markdown / 图片渲染器；pages 是按时间倒序的全局列表
 function renderPostPage(pages: PageRef[], i: number, footer: string): string {
   const p = pages[i];
@@ -2080,25 +2010,12 @@ function renderPostPage(pages: PageRef[], i: number, footer: string): string {
         `<svg viewBox="0 0 24 24" class="i-pause"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>` +
         `</span></button>`
       : '';
-  const rel = relatedPosts(pages, i);
-  const relHtml = rel.length
-    ? `<nav class="rel"><div class="rel-t">相关文章</div>` +
-      rel
-        .map(
-          (r) =>
-            `<a class="rel-i" href="${escAttr(r.slug)}.html"><span class="rel-tt">${esc(r.entry.title)}</span>` +
-            `<span class="rel-mt">${esc(r.secLabel)}${r.entry.date ? ` · ${esc(r.entry.date)}` : ''}</span></a>`,
-        )
-        .join('') +
-      `</nav>`
-    : '';
   const main =
     `<main class="article"><h1>${esc(p.entry.title)}</h1>` +
     chipsRow(p) +
     musicBar +
     // pager / footer 放进 .book：滚动模式下和原来一样是普通块级顺序；书页模式下会排到最后一页
     `<div class="bookwrap"><div class="book" id="book"><div class="body">${bodyHtml}</div>` +
-    relHtml +
     (pg.length ? `<nav class="pager">${pg.join('')}</nav>` : '') +
     footer +
     `</div></div>` +
