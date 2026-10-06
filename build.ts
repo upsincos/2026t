@@ -6,6 +6,7 @@
  *   index.html         首页：顶栏 + 左侧栏（置顶 / 栏目 / 统计）+ 栏目标题 + 按时间倒序的简明文章列表
  *   posts/<slug>.html  文章页：标题 + 元信息 + 正文（小节 ≥2 时带左侧目录）+ 「更新的一篇 / 更早的一篇」两个链接
  *   stats.html         写作统计：按月发文 / 栏目 / 标签分布（构建时算好，纯静态、无脚本）
+ *   feed.xml           订阅源（RSS 2.0，全文进 content:encoded，地址全部绝对化）
  *   assets/            正文图片压缩后的成品
  * 首页只放简洁条目（标题 / 一行摘要 / 日期 · 栏目 · 标签），正文留在文章页；frontmatter 写 pin: true 可置顶。
  * 列表超过 20 篇时出现「加载更多」，分批显示；筛选 / 搜索时自动回到第一批。
@@ -41,7 +42,8 @@
  *
  * 配乐（可选，自托管）：frontmatter 写一行 `music: 曲名 | 文件名.mp3`（只写文件名则用文件名当曲名），
  *   写 http(s) 链接则直接引用不复制。本地音频按内容哈希复制到 assets/，不转码；
- *   文章页默认折叠成一行「配乐 · 曲名」，展开才出现播放器（preload="none"，不点不产生请求）。
+ *   文章页默认折叠成一行「♪ 配乐 · 曲名」，展开才出现播放条（preload="none"，不点不产生请求）；
+ *   滚动离开后右下角出现带进度环的小圆钮，可随时播放 / 暂停。无 JS 时退回原生 <audio>。
  */
 
 import { createHash } from 'node:crypto';
@@ -884,6 +886,15 @@ function inline(s: string, mdDir = '', prefix = ''): string {
     (_m, t: string, alias: string | undefined) =>
       `\u0002${encodeURIComponent(t.trim())}\u0001${alias ? alias.trim() : ''}\u0002`,
   );
+  // 跨文章内链 [[文章名]] / [[文章名|显示文字]]（`#` 开头的是本篇锚点，上面已处理；图片是 ![[…]]）
+  out = out.replace(/\[\[([^\[\]|#]+?)(?:\|([^\[\]]+?))?\]\]/g, (m, name: string, alias?: string) => {
+    const slug = POST_LINKS.get(postKey(name.trim()));
+    if (!slug) {
+      POST_LINK_MISSING.push(name.trim());
+      return m;
+    }
+    return hold(`<a href="${prefix}posts/${escAttr(slug)}.html">${esc((alias ?? name).trim())}</a>`);
+  });
   // 链接 [文字](https://…)
   out = out.replace(
     /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
@@ -1005,11 +1016,21 @@ const CALLOUTS: Record<string, [string, string]> = {
   failure: ['danger', '失败'], fail: ['danger', '失败'], missing: ['danger', '缺失'],
   danger: ['danger', '危险'], error: ['danger', '错误'], bug: ['danger', '缺陷'],
   quote: ['quote', '引用'], cite: ['quote', '引用'],
+  // 复盘字段卡：`> [!review] 复盘` 里每条 `字段：值` 渲染成一行（品种/方向/理由/执行/情绪/结论…）
+  review: ['review', '复盘'], journal: ['review', '复盘'],
 };
 
 // 开头提要里的 [[#小节标题]] 内链：正文渲染完才知道每节最终拿到哪个锚点（h-1、h-2…），所以收尾统一替换
 const WIKI_PLACEHOLDER = /\u0002([^\u0001\u0002]*)\u0001([^\u0002]*)\u0002/g;
 const WIKI_MISSING: { label: string; target: string }[] = [];
+
+// 跨文章内链 [[文章名]] / [[文章名|显示文字]]：构建时解析成站内文章页。
+// 键做过归一化（去空白 / 统一引号 / 忽略大小写），标题、文件名（可省日期前缀）、slug 都能对上。
+const POST_LINKS = new Map<string, string>();
+const POST_LINK_MISSING: string[] = [];
+function postKey(s: string): string {
+  return s.normalize('NFC').replace(/\s+/g, '').replace(/[‘’“”"']/g, '"').toLowerCase();
+}
 
 function resolveWikiLinks(html: string, label: string): string {
   const ids = new Map<string, string>();
@@ -1096,6 +1117,24 @@ function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): strin
               `<summary class="co-t">${inline(title || label, mdDir, prefix)}</summary>` +
               cbody.map((t) => `<p>${inline(t, mdDir, prefix)}</p>`).join('') +
               `</details>`,
+          );
+          continue;
+        }
+        if (kind === 'review') {
+          // 每条 `字段：值`（列表记号可省略）→ 一行；其余行按普通段落排在卡片下面
+          const rows: string[] = [];
+          const notes: string[] = [];
+          for (const t of cbody) {
+            const rm = /^\s*(?:[-*+]\s+)?([^：:]{1,14})\s*[：:]\s*(.+?)\s*$/.exec(t);
+            if (rm) rows.push(`<div class="rv-r"><b>${esc(rm[1].trim())}</b><span>${inline(rm[2], mdDir, prefix)}</span></div>`);
+            else notes.push(t);
+          }
+          out.push(
+            `<div class="co co-review">` +
+              `<div class="co-t">${inline(title || label, mdDir, prefix)}</div>` +
+              rows.join('') +
+              notes.map((t) => `<p>${inline(t, mdDir, prefix)}</p>`).join('') +
+              `</div>`,
           );
           continue;
         }
@@ -1340,32 +1379,81 @@ body>main{margin-left:auto;margin-right:auto}
 .r1{background:var(--green-soft);color:var(--green-1);border-color:var(--green-soft)}
 .r2{background:var(--gray-soft);color:var(--gray-1);border-color:var(--gray-soft)}
 
-.plain{margin:0 0 12px 34px;padding:10px 14px;background:var(--brand-soft);
-  border-left:3px solid var(--brand-1);border-radius:0 8px 8px 0;font-size:15px;line-height:1.8;color:var(--t1)}
-.fields{margin-left:34px}
-.f{display:grid;grid-template-columns:52px 1fr;gap:10px;padding:7px 0;border-top:1px solid var(--divider);
-  font-size:13.5px;line-height:1.75;color:var(--t2)}
-.f b{font-weight:500;color:var(--t3);font-size:12.5px;padding-top:2px}
-.f.note b{color:var(--yellow-1)}
-.f>div{min-width:0;overflow-wrap:anywhere}
-.src{margin:10px 0 0 34px;border-top:1px solid var(--divider);padding-top:8px}
-.src summary{cursor:pointer;font-size:12.5px;color:var(--t3);list-style:none;user-select:none}
-.src summary::-webkit-details-marker{display:none}
-.src summary::before{content:"▸ ";color:var(--t3)}
-.src[open] summary::before{content:"▾ "}
-.src summary:hover{color:var(--brand-1)}
-.src .sbody{font-size:12.5px;line-height:1.8;color:var(--t2);padding:8px 0 2px;word-break:break-word;overflow-wrap:anywhere}
-
-/* ── 配乐：默认折叠成一行（不点不产生请求），展开才出现原生播放器；记号沿用「来源」那套 ▸ / ▾ ── */
-.music{margin:12px 0 0}
-.music summary{cursor:pointer;font-size:12.5px;color:var(--t3);list-style:none;user-select:none;transition:color .15s}
-.music summary::-webkit-details-marker{display:none}
-.music summary::before{content:"▸ ";color:var(--t3)}
-.music[open] summary::before{content:"▾ "}
-.music summary:hover{color:var(--mk)}
-.music audio{display:block;width:100%;margin-top:8px}
-
-body.plain-only .fields,body.plain-only .src{display:none}
+/* ── 配乐：折叠状态只是一个安静的小药丸（不点不产生任何请求）；展开是一条极简播放条。
+      配色只借结构色 --mk（散文篇自动变茶褐），其余走中性面，和全站素雅基调一致。 ── */
+.pl{margin:14px 0 0}
+/* 药丸本身分两半：左边一颗播放键（不用展开就能听），右边点开才是完整播放条 */
+.pl-head{display:inline-flex;align-items:center;height:30px;border:1px solid var(--divider);border-radius:999px;
+  background:var(--bg-elv);transition:border-color .18s}
+.pl-head:hover,.pl[data-open="1"] .pl-head,.pl.is-playing .pl-head{border-color:var(--mk)}
+.pl-mini{flex:none;width:30px;height:30px;padding:0;border:0;background:transparent;color:var(--mk);
+  display:flex;align-items:center;justify-content:center;cursor:pointer}
+.pl-mini svg{width:12px;height:12px;fill:currentColor;display:block}
+.pl-mini .i-pause,.pl.is-playing .pl-mini .i-play{display:none}
+.pl.is-playing .pl-mini .i-pause{display:block}
+.pl-btn{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px 0 3px;border:0;
+  background:transparent;color:var(--t2);font:500 12px/1 var(--ui-font);cursor:pointer;transition:color .18s}
+.pl-btn:hover{color:var(--t1)}
+.pl[data-open="1"] .pl-btn{color:var(--mk)}
+.pl-name{max-width:44vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-chev{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;
+  border-top:5px solid currentColor;opacity:.7;transition:transform .22s}
+.pl[data-open="1"] .pl-chev{transform:rotate(180deg)}
+/* 展开：grid-template-rows 0fr→1fr 能按内容真实高度过渡，不用写死 max-height */
+.pl-panel{display:grid;grid-template-rows:0fr;transition:grid-template-rows .26s cubic-bezier(.33,1,.68,1)}
+.pl[data-open="1"] .pl-panel{grid-template-rows:1fr}
+.pl-inner{overflow:hidden;min-height:0;opacity:0;transition:opacity .2s}
+.pl[data-open="1"] .pl-inner{opacity:1}
+.pl-card{display:flex;align-items:center;gap:11px;margin:10px 0 2px;padding:8px 12px;border-radius:10px;
+  border:1px solid var(--divider);background:var(--bg-alt)}
+.pl-play{flex:none;width:30px;height:30px;padding:0;border-radius:50%;border:1px solid var(--divider);
+  background:var(--bg-elv);color:var(--mk);display:flex;align-items:center;justify-content:center;cursor:pointer;
+  transition:border-color .18s,background-color .18s}
+.pl-play:hover{border-color:var(--mk)}
+.pl-play svg{width:15px;height:15px;fill:currentColor;display:block}
+.pl-play .i-pause,.pl.is-playing .pl-play .i-play{display:none}
+.pl.is-playing .pl-play .i-pause{display:block}
+.pl-track{flex:1;min-width:0}
+.pl-title{font-size:12.5px;color:var(--t1);margin:0 0 5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-bar{position:relative;display:block;width:100%;height:12px;padding:0;border:0;background:none;cursor:pointer}
+.pl-bar::before{content:"";position:absolute;left:0;right:0;top:5px;height:2px;border-radius:2px;background:var(--divider)}
+.pl-fill{position:absolute;left:0;top:5px;width:0;height:2px;border-radius:2px;background:var(--mk)}
+.pl-time{flex:none;font-size:11px;color:var(--t3);font-variant-numeric:tabular-nums}
+/* 没有 JS（或脚本被拦）时退回原生 <audio>，保证配乐仍能播放 */
+html.js .pl audio{display:none}
+html:not(.js) .pl-head,html:not(.js) .pl-card,html:not(.js) .pf{display:none}
+html:not(.js) .pl-panel{grid-template-rows:1fr}
+html:not(.js) .pl-inner{opacity:1}
+html:not(.js) .pl audio{display:block;width:100%;margin:10px 0 2px}
+/* 右下角常驻小圆钮：滚动离开播放条后才淡入，进度用一圈细环表示 */
+.pf{position:fixed;right:16px;bottom:70px;z-index:39;width:44px;height:44px;padding:0;border:0;border-radius:50%;
+  background:var(--bg-elv);color:var(--mk);cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.16);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;transform:translateY(8px) scale(.9);pointer-events:none;transition:opacity .22s,transform .22s}
+.pf.show{opacity:1;transform:none;pointer-events:auto}
+.pf:hover{color:var(--mk)}
+.pf-ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+.pf-ring circle{fill:none;stroke-width:2}
+.pf-ring-bg{stroke:var(--divider)}
+.pf-ring-fg{stroke:var(--mk);stroke-linecap:round;stroke-dasharray:100.53;stroke-dashoffset:100.53;
+  transition:stroke-dashoffset .3s linear}
+.pf-ico{position:relative;width:17px;height:17px}
+.pf-ico svg{position:absolute;inset:0;width:100%;height:100%;fill:currentColor}
+.pf-ico .i-pause,.pf.is-playing .pf-ico .i-play{display:none}
+.pf.is-playing .pf-ico .i-pause{display:block}
+/* 播放时向外荡开一圈很淡的水纹：只有 transform + opacity，走合成层，不触发重排重绘 */
+.pf::after{content:"";position:absolute;inset:-1px;border-radius:50%;border:1.5px solid var(--mk);
+  opacity:0;pointer-events:none}
+.pf.show.is-playing::after{animation:pfRipple 2.6s cubic-bezier(.25,.6,.35,1) infinite}
+@keyframes pfRipple{
+  0%{transform:scale(1);opacity:.32}
+  70%{opacity:.05}
+  100%{transform:scale(1.6);opacity:0}
+}
+@media (prefers-reduced-motion:reduce){
+  .pl-panel,.pl-inner,.pl-chev,.pf,.pf-ring-fg{transition:none}
+  .pf.show.is-playing::after{animation:none}
+}
 
 /* ── 文章页（宽屏：左侧目录 + 正文，沿用原书的目录联动；窄屏目录收进顶栏下拉）── */
 .shell{display:flex;align-items:flex-start}
@@ -1396,6 +1484,15 @@ body.plain-only .fields,body.plain-only .src{display:none}
 .pager a small{font-size:11.5px;color:var(--t3)}
 .pager a span{font-weight:500;overflow-wrap:anywhere}
 .pager .older{margin-left:auto;text-align:right}
+/* 文末「相关文章」：构建时按共同标签算好，纯静态、零客户端成本 */
+.rel{margin:30px 0 0;border-top:1px solid var(--divider);padding-top:14px}
+.rel-t{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--t3);margin:0 0 4px}
+.rel-t::before{content:"";width:13px;height:2px;border-radius:2px;background:var(--mk)}
+.rel-i{display:flex;align-items:baseline;gap:10px;padding:5px 0;font-size:14px;line-height:1.6;
+  color:var(--t1);overflow-wrap:anywhere}
+.rel-i:hover{color:var(--brand-1);text-decoration:none}
+.rel-tt{flex:1;min-width:0;font-weight:500}
+.rel-mt{flex:none;font-size:11.5px;color:var(--t3);font-variant-numeric:tabular-nums}
 
 /* ── 书页模式：正文走 CSS 分栏，翻页只做一次 transform（不测量文字、不重建 DOM，所以不卡）──
       分栏高度固定后，溢出的内容会自动排到下一栏；整块左移一栏的宽度就是一页。
@@ -1411,7 +1508,8 @@ html[data-read=book] .book{height:100%;columns:1;column-gap:56px;column-fill:aut
   transition:transform .3s cubic-bezier(.22,.61,.36,1)}
 html[data-read=book] .book.noanim{transition:none}
 html[data-read=book] .body figure,html[data-read=book] .body pre.code,html[data-read=book] .body .co,
-html[data-read=book] .body li,html[data-read=book] .pager,html[data-read=book] .book>footer{break-inside:avoid}
+html[data-read=book] .body li,html[data-read=book] .rel,html[data-read=book] .pager,
+html[data-read=book] .book>footer{break-inside:avoid}
 html[data-read=book] .body h3,html[data-read=book] .body h4,html[data-read=book] .body h5{break-after:avoid}
 /* 书页模式里图片收得比滚动模式小得多：一页只有一栏，图一大正文就没地方了。
    图整块不拆栏（figure 上是 break-inside:avoid），收到 26vh / 240px 后一张图只占一小块，
@@ -1453,6 +1551,16 @@ html[data-read=book] .bookbar{display:flex;align-items:center;justify-content:ce
 .st-tag{display:inline-flex;align-items:baseline;gap:7px;padding:6px 11px;border-radius:999px;
   background:var(--bg-mute);color:var(--t2);font-size:12.5px}
 .st-tag i{font-style:normal;font-size:11px;color:var(--t3);font-variant-numeric:tabular-nums}
+/* 按月回顾：写作统计页里的时间线入口（每篇都是链接），纯静态 */
+.st-arch{display:grid;gap:14px;margin:2px 0 6px}
+.st-mo-h{display:flex;align-items:baseline;gap:8px;margin:0 0 2px;padding-bottom:5px;
+  border-bottom:1px solid var(--divider);font-size:12.5px;font-weight:600;color:var(--t1);
+  font-variant-numeric:tabular-nums}
+.st-mo-h i{font-style:normal;font-weight:400;font-size:11px;color:var(--t3);margin-left:auto}
+.st-mo a{display:flex;align-items:baseline;gap:9px;padding:4px 0;font-size:13.5px;line-height:1.6;color:var(--t1)}
+.st-mo a:hover{color:var(--brand-1);text-decoration:none}
+.st-mo a em{font-style:normal;flex:none;min-width:26px;font-size:11.5px;color:var(--t3);
+  font-variant-numeric:tabular-nums}
 @media (max-width:520px){.st-cards{grid-template-columns:repeat(2,1fr)}}
 
 .hidden{display:none!important}
@@ -1530,6 +1638,17 @@ footer a{color:var(--t2)}
 .body .co-danger .co-t{color:var(--red-1)}
 .body .co-question{border-left-color:var(--gray-1);background:var(--gray-soft)}
 .body .co-question .co-t{color:var(--gray-1)}
+/* 复盘字段卡（> [!review]）：固定字段一条一行，扫一眼就能看全。
+   中性面 + 一道结构色左耳，和提要同一套语言；散文栏目下 --mk 自动变茶褐。 */
+.body .co-review{background:var(--bg-alt);border:1px solid var(--divider);border-left:3px solid var(--mk);padding:11px 14px}
+.body .co-review .co-t{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--mk);margin:0 0 5px;letter-spacing:.02em}
+.body .co-review .co-t::before{content:"";width:13px;height:2px;border-radius:2px;background:var(--mk)}
+.body .co-review .rv-r{display:grid;grid-template-columns:4.4em 1fr;gap:10px;padding:6px 0;
+  font-size:13.5px;line-height:1.75;color:var(--t1)}
+.body .co-review .rv-r+.rv-r{border-top:1px solid var(--divider)}
+.body .co-review .rv-r b{font-weight:500;font-size:12.5px;color:var(--t3)}
+.body .co-review .rv-r>span{min-width:0;overflow-wrap:anywhere}
+.body .co-review>p{font-size:13.5px;color:var(--t2);margin:8px 0 0}
 /* 删除线与任务清单（Obsidian 常用格式）*/
 .body del{color:var(--t3)}
 .body li.task{list-style:none}
@@ -1597,12 +1716,10 @@ footer a{color:var(--t2)}
   .ititle{font-size:15.5px}
   .pager{margin-top:28px}
   .pager a{max-width:100%}
-  .plain{font-size:14.5px;padding:9px 12px}
-  .f{font-size:13px;grid-template-columns:44px 1fr;gap:8px}
 }
 @media (max-width:520px){
   .bar h1 small,.bar .brand small{display:none}
-  .chips,.plain,.fields,.src,.body{margin-left:0}
+  .chips,.body{margin-left:0}
   /* 手机上触发按钮靠右，面板再按 right:0 对齐会顶出左边界；改成贴上栏的通栏浮层 */
   .look-panel{position:fixed;left:12px;right:12px;top:calc(var(--bar) + 8px);width:auto;max-width:none}
 }
@@ -1617,12 +1734,11 @@ footer a{color:var(--t2)}
   .article{max-width:840px}
 }
 @media print{
-  .bar,.toc,.side,.jump,#top,#lb{display:none}
+  .bar,.toc,.side,.jump,#top,#lb,.pl,.pf{display:none}
   main{max-width:none;padding:0}
   .item{break-inside:avoid;border-color:#ccc}
   .body img{max-height:none}
-  .pager{display:none}
-  .src .sbody{display:block}
+  .pager,.rel{display:none}
   body{font-size:11pt}
 }
 `;
@@ -1657,8 +1773,8 @@ function stripMd(md: string): string {
   t = t.replace(/^\s{0,3}(?:[-*_]\s*){3,}$/gm, ' ');      // 分隔线
   t = t.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');            // 图片
   t = t.replace(/!\[\[[^\]]*\]\]/g, ' ');            // Obsidian 式图片
-  t = t.replace(/\[\[#([^\]|]+?)(?:\|([^\]]+?))?\]\]/g, (_m, a: string, b?: string) =>
-    b ?? a);                                          // Obsidian 式内链：只留显示文字
+  t = t.replace(/\[\[#?([^\]|]+?)(?:\|([^\]]+?))?\]\]/g, (_m, a: string, b?: string) =>
+    b ?? a);                                          // Obsidian 式内链（本篇锚点 / 跨文章）：只留显示文字
   t = t.replace(/==([^=]+)==/g, '$1');                    // 高亮
   t = t.replace(/~~([^~]+)~~/g, '$1');                    // 删除线
   t = t.replace(/\[![A-Za-z+-]+\]/g, ' ');                // 提醒块记号
@@ -1679,9 +1795,15 @@ function stripTags(s: string): string {
   return s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
 }
 
+// 复盘字段卡（> [!review]）整块去掉：列表摘要和全文搜索留给真正的正文，
+// 不让「品种：/方向：」这些固定字段占掉提要的位置（字段本身仍进搜索索引与字数统计）。
+function stripReviewBlock(md: string): string {
+  return md.replace(/^[ \t]*>[ \t]*\[!(?:review|journal)\][^\n]*\n(?:[ \t]*>[^\n]*\n?)*/gim, '');
+}
+
 // 首页列表摘要：默认约 100 字
 function excerptOf(md: string, n = 100): string {
-  const t = stripMd(md);
+  const t = stripMd(stripReviewBlock(md));
   return cpLen(t) <= n ? t : cpSlice(t, 0, n) + '…';
 }
 
@@ -1719,7 +1841,7 @@ const LOOK_BAR =
   `<button class="btn" id="look-btn" type="button" aria-expanded="false" aria-haspopup="true">外观</button>` +
   `<div class="look-panel" id="look-panel">` +
   lookRow('底色', 'paper', [['', '纯白'], ['cream', '米黄'], ['green', '豆绿'], ['blue', '灰蓝']]) +
-  lookRow('字体', 'font', [['', '黑体'], ['serif', '宋体'], ['kai', '楷体'], ['fangsong', '仿宋'], ['yuan', '圆体']]) +
+  lookRow('字体', 'font', [['', '默认'], ['serif', '宋体'], ['kai', '楷体'], ['fangsong', '仿宋'], ['yuan', '圆体']]) +
   `</div></div>`;
 
 // 书页模式的翻页条（只在书页模式下出现，显隐交给 CSS）
@@ -1789,11 +1911,13 @@ function pageHead(title: string, desc: string, meta: HeadMeta = {}): string {
     `<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1b1b1f">` +
     `<meta name="description" content="${d}">` +
     `<link rel="canonical" href="${escAttr(url)}">` +
+    `<link rel="alternate" type="application/rss+xml" title="${escAttr(SITE.name)}" href="${escAttr(absUrl('feed.xml'))}">` +
     og +
     `<title>${esc(title)}</title><style>${CSS}</style>` +
     // 首帧之前就把记忆里的侧栏 / 明暗 / 外观 / 阅读模式落到 <html> 上，避免闪一下再变
     `<script>try{` +
     `var d=document.documentElement;` +
+    `d.classList.add('js');` +
     `if(localStorage.getItem('blog-side')==='0')d.setAttribute('data-side','0');` +
     `['paper','font'].forEach(function(k){` +
     `var v=localStorage.getItem('blog-'+k);if(v)d.setAttribute('data-'+k,v);});` +
@@ -1831,6 +1955,29 @@ function renderListItem(p: PageRef): string {
     `<div class="imeta">${metaText(p)}</div>` +
     `</li>`
   );
+}
+
+// 文末「相关文章」：共同标签越多越靠前，同栏目加一点分；全在构建时算好，前端零成本。
+function relatedPosts(pages: PageRef[], i: number, n = 3): PageRef[] {
+  const me = pages[i];
+  if (me.entry.tags.length === 0) return [];
+  const mine = new Set(me.entry.tags);
+  const scored: { p: PageRef; s: number }[] = [];
+  for (let j = 0; j < pages.length; j++) {
+    if (j === i) continue;
+    const other = pages[j];
+    let shared = 0;
+    for (const t of other.entry.tags) if (mine.has(t)) shared++;
+    if (shared === 0) continue;
+    scored.push({ p: other, s: shared * 10 + (other.secLabel === me.secLabel ? 1 : 0) });
+  }
+  scored.sort(
+    (a, b) =>
+      b.s - a.s ||
+      (b.p.entry.date || '').localeCompare(a.p.entry.date || '') ||
+      (a.p.slug < b.p.slug ? -1 : a.p.slug > b.p.slug ? 1 : 0),
+  );
+  return scored.slice(0, n).map((x) => x.p);
 }
 
 // 文章页：正文用同一套 markdown / 图片渲染器；pages 是按时间倒序的全局列表
@@ -1901,15 +2048,57 @@ function renderPostPage(pages: PageRef[], i: number, footer: string): string {
     : '';
   const musicBar =
     p.entry.music && musicSrc
-      ? `<details class="music"><summary>配乐 · ${esc(p.entry.music.title)}</summary>` +
-        `<audio controls preload="none" src="${escAttr(musicSrc)}"></audio></details>`
+      ? `<div class="pl" id="pl">` +
+        `<div class="pl-head">` +
+        `<button class="pl-mini" type="button" aria-label="播放配乐">` +
+        `<svg viewBox="0 0 24 24" class="i-play" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>` +
+        `<svg viewBox="0 0 24 24" class="i-pause" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>` +
+        `</button>` +
+        `<button class="pl-btn" type="button" aria-expanded="false" aria-controls="plp">` +
+        `<span class="pl-name">配乐 · ${esc(p.entry.music.title)}</span>` +
+        `<span class="pl-chev" aria-hidden="true"></span></button>` +
+        `</div>` +
+        `<div class="pl-panel" id="plp"><div class="pl-inner"><div class="pl-card">` +
+        `<button class="pl-play" type="button" aria-label="播放配乐">` +
+        `<svg viewBox="0 0 24 24" class="i-play" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>` +
+        `<svg viewBox="0 0 24 24" class="i-pause" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>` +
+        `</button>` +
+        `<div class="pl-track"><div class="pl-title">${esc(p.entry.music.title)}</div>` +
+        `<button class="pl-bar" type="button" aria-label="调整播放进度"><i class="pl-fill"></i></button></div>` +
+        `<span class="pl-time">0:00 / 0:00</span>` +
+        `</div></div></div>` +
+        `<audio preload="none" src="${escAttr(musicSrc)}"></audio></div>`
       : '';
+  const playerFab =
+    p.entry.music && musicSrc
+      ? `<button class="pf" id="pf" type="button" title="播放 / 暂停" aria-label="播放配乐">` +
+        `<svg class="pf-ring" viewBox="0 0 36 36" aria-hidden="true">` +
+        `<circle class="pf-ring-bg" cx="18" cy="18" r="16"></circle>` +
+        `<circle class="pf-ring-fg" cx="18" cy="18" r="16"></circle></svg>` +
+        `<span class="pf-ico" aria-hidden="true">` +
+        `<svg viewBox="0 0 24 24" class="i-play"><path d="M8 5v14l11-7z"/></svg>` +
+        `<svg viewBox="0 0 24 24" class="i-pause"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>` +
+        `</span></button>`
+      : '';
+  const rel = relatedPosts(pages, i);
+  const relHtml = rel.length
+    ? `<nav class="rel"><div class="rel-t">相关文章</div>` +
+      rel
+        .map(
+          (r) =>
+            `<a class="rel-i" href="${escAttr(r.slug)}.html"><span class="rel-tt">${esc(r.entry.title)}</span>` +
+            `<span class="rel-mt">${esc(r.secLabel)}${r.entry.date ? ` · ${esc(r.entry.date)}` : ''}</span></a>`,
+        )
+        .join('') +
+      `</nav>`
+    : '';
   const main =
     `<main class="article"><h1>${esc(p.entry.title)}</h1>` +
     chipsRow(p) +
     musicBar +
     // pager / footer 放进 .book：滚动模式下和原来一样是普通块级顺序；书页模式下会排到最后一页
     `<div class="bookwrap"><div class="book" id="book"><div class="body">${bodyHtml}</div>` +
+    relHtml +
     (pg.length ? `<nav class="pager">${pg.join('')}</nav>` : '') +
     footer +
     `</div></div>` +
@@ -1932,6 +2121,7 @@ function renderPostPage(pages: PageRef[], i: number, footer: string): string {
     (hasToc ? `<div class="shell">${toc}${main}</div>` : main) +
     LIGHTBOX +
     TOP_BTN +
+    playerFab +
     '<script>' +
     JS_BASE +
     JS_POST +
@@ -2379,10 +2569,139 @@ if(book&&modeBtn){
     const id=(location.hash||'').slice(1);
     if(id) bkToId(id); else bkApply(0);
   });
+}
+/* 配乐：一个 <audio>、两处控件（正文里的折叠播放条 + 右下角小圆钮）。
+   进度只在 timeupdate（约 4 次/秒）时刷新，不跑 rAF 常驻循环；滚动用 IntersectionObserver，不加 scroll 监听。 */
+const pl=document.getElementById('pl');
+if(pl){
+  const au=pl.querySelector('audio');
+  const btn=pl.querySelector('.pl-btn');
+  const mini=pl.querySelector('.pl-mini');
+  const playBtn=pl.querySelector('.pl-play');
+  const bar=pl.querySelector('.pl-bar');
+  const fill=pl.querySelector('.pl-fill');
+  const timeEl=pl.querySelector('.pl-time');
+  const fab=document.getElementById('pf');
+  const fg=fab?fab.querySelector('.pf-ring-fg'):null;
+  const RING=100.53;
+  const fmt=s=>{if(!isFinite(s)||s<0)s=0;const m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+(x<10?'0':'')+x;};
+  const setOpen=v=>{pl.setAttribute('data-open',v?'1':'0');btn.setAttribute('aria-expanded',v?'true':'false');};
+  const paint=()=>{
+    const d=au.duration||0;
+    const p=d?Math.min(1,au.currentTime/d):0;
+    fill.style.width=(p*100)+'%';
+    timeEl.textContent=fmt(au.currentTime)+' / '+(d?fmt(d):'0:00');
+    const on=!au.paused&&!au.ended;
+    pl.classList.toggle('is-playing',on);
+    playBtn.setAttribute('aria-label',on?'暂停配乐':'播放配乐');
+    mini.setAttribute('aria-label',on?'暂停配乐':'播放配乐');
+    if(fab){
+      fab.classList.toggle('is-playing',on);
+      fab.setAttribute('aria-label',on?'暂停配乐':'播放配乐');
+      if(fg) fg.style.strokeDashoffset=String(RING*(1-p));
+    }
+  };
+  const toggle=()=>{if(au.paused)au.play().catch(()=>{});else au.pause();};
+  btn.addEventListener('click',()=>setOpen(pl.getAttribute('data-open')!=='1'));
+  mini.addEventListener('click',toggle);
+  playBtn.addEventListener('click',toggle);
+  bar.addEventListener('click',e=>{
+    const d=au.duration;if(!d)return;
+    const r=bar.getBoundingClientRect();
+    au.currentTime=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*d;
+    paint();
+  });
+  au.addEventListener('play',paint);
+  au.addEventListener('pause',paint);
+  au.addEventListener('timeupdate',paint);
+  au.addEventListener('loadedmetadata',paint);
+  au.addEventListener('ended',()=>{au.currentTime=0;paint();});
+  if(fab){
+    fab.addEventListener('click',toggle);
+    if('IntersectionObserver' in window){
+      const io=new IntersectionObserver(es=>{es.forEach(en=>fab.classList.toggle('show',!en.isIntersecting));},{rootMargin:'0px 0px -40px 0px'});
+      io.observe(pl);
+      pl._io=io;
+    }else{
+      fab.classList.add('show');
+    }
+  }
+  paint();
 }`;
 
 /* ── 全文搜索索引：首页首次搜索时才加载 assets/search.js，首屏不受影响。
       用 <script> 而不是 fetch，是因为 fetch 在本地 file:// 预览下会被浏览器拦掉。 ── */
+// XML 1.0 不允许的控制字符（正文里可能混入粘贴带来的不可见字符，比如 U+0003）
+function xmlSafe(s: string): string {
+  return s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '');
+}
+function xmlEsc(s: string): string {
+  return xmlSafe(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// YYYY-MM-DD → RFC 822（固定在 UTC 正午，避免时区把日期挤到前一天；也保证构建确定性）
+function rfc822(date: string): string {
+  if (!date) return '';
+  const d = new Date(`${date}T12:00:00Z`);
+  return isNaN(d.getTime()) ? '' : d.toUTCString();
+}
+
+/* ── RSS：构建时生成 feed.xml（纯静态、无第三方服务、无埋点）。
+      正文以「站点根前缀」渲染，再把 assets/ 和站内锚点转成绝对地址，
+      这样在阅读器里图片能显示、点小节能跳回原文。 ── */
+function writeFeed(pages: PageRef[]): void {
+  const home = absUrl('');
+  const self = absUrl('feed.xml');
+  const assetsAbs = absUrl('assets/');
+  const latest = pages
+    .map((p) => p.entry.date)
+    .filter(Boolean)
+    .sort()
+    .pop();
+  const items = pages
+    .slice(0, 50)
+    .map((p) => {
+      const url = absUrl(p.outName);
+      let html = mdToHtml(p.entry.body, p.entry.dir, '', p.entry.title);
+      html = html.replace(/(src|href)="assets\//g, (_m, attr: string) => `${attr}="${assetsAbs}`);
+      // 跨文章内链（[[文章名]]）在文章页是相对路径，进 RSS 前转成绝对地址
+      html = html.replace(/href="posts\//g, `href="${absUrl('posts/')}`);
+      html = html.replace(/href="#/g, `href="${url}#`);
+      const pub = rfc822(p.entry.date);
+      return (
+        '<item>' +
+        `<title>${xmlEsc(p.entry.title)}</title>` +
+        `<link>${xmlEsc(url)}</link>` +
+        `<guid isPermaLink="true">${xmlEsc(url)}</guid>` +
+        (pub ? `<pubDate>${pub}</pubDate>` : '') +
+        `<category>${xmlEsc(p.secLabel)}</category>` +
+        p.entry.tags.map((t) => `<category>${xmlEsc(t)}</category>`).join('') +
+        `<description>${xmlEsc(p.excerpt || '')}</description>` +
+        `<content:encoded><![CDATA[${xmlSafe(html).split(']]>').join(']]&gt;')}]]></content:encoded>` +
+        '</item>'
+      );
+    })
+    .join('');
+  const xml =
+    '<?xml version="1.0" encoding="utf-8"?>' +
+    '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" ' +
+    'xmlns:content="http://purl.org/rss/1.0/modules/content/">' +
+    '<channel>' +
+    `<title>${xmlEsc(SITE.name)}</title>` +
+    `<link>${xmlEsc(home)}</link>` +
+    `<description>${xmlEsc(SITE.description || SITE.tagline || `${SITE.name}：个人文章与交易复盘`)}</description>` +
+    '<language>zh-CN</language>' +
+    (latest ? `<lastBuildDate>${rfc822(latest)}</lastBuildDate>` : '') +
+    `<atom:link href="${xmlEsc(self)}" rel="self" type="application/rss+xml"/>` +
+    items +
+    '</channel></rss>';
+  writeFileSync(join(SITE_ROOT, 'feed.xml'), xml, 'utf8');
+}
+
 function writeSearchIndex(pages: PageRef[]): void {
   const idx = pages.map((p) => ({
     u: p.outName,
@@ -2469,6 +2788,28 @@ function renderStatsPage(pages: PageRef[]): string {
     .map(([t, n]) => `<span class="st-tag">#${esc(t)}<i>${n}</i></span>`)
     .join('');
 
+  // 按月回顾：把有日期的文章按月倒序列出来，作为「定期回看 / 大总结」的入口
+  const monthPosts = new Map<string, PageRef[]>();
+  for (const p of dated) {
+    const m = p.entry.date.slice(0, 7);
+    monthPosts.set(m, [...(monthPosts.get(m) ?? []), p]);
+  }
+  const archive = [...monthPosts.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .slice(0, 48)
+    .map(
+      ([m, list]) =>
+        `<div class="st-mo"><div class="st-mo-h">${esc(m)}<i>${list.length} 篇</i></div>` +
+        list
+          .map(
+            (p) =>
+              `<a href="${escAttr(p.outName)}"><em>${esc(p.entry.date.slice(8, 10))}日</em>${esc(p.entry.title)}</a>`,
+          )
+          .join('') +
+        `</div>`,
+    )
+    .join('');
+
   const longest = pages.reduce((a, p) => (wordsOf(p) > wordsOf(a) ? p : a), pages[0]);
   const cards =
     `<div class="st-cards">` +
@@ -2487,7 +2828,8 @@ function renderStatsPage(pages: PageRef[]): string {
     cards +
     (months.length ? `<h3>每月发文</h3><div class="st-bars">${bars}</div>` : '') +
     (secRows ? `<h3>栏目</h3><table class="st-tab"><thead><tr><th>栏目</th><th class="n">篇数</th><th class="n">字数</th><th class="n">平均</th></tr></thead><tbody>${secRows}</tbody></table>` : '') +
-    (tags ? `<h3>标签</h3><div class="st-tags">${tags}</div>` : '');
+    (tags ? `<h3>标签</h3><div class="st-tags">${tags}</div>` : '') +
+    (archive ? `<h3>按月回顾</h3><div class="st-arch">${archive}</div>` : '');
 
   const bar =
     `<header class="bar"><a class="back" href="${escAttr(basename(OUT_FILE))}">← 返回首页</a>` +
@@ -2601,6 +2943,18 @@ function main(): void {
     p.outName = `${PAGES_DIR}/${slug}.html`;
   }
 
+  // 跨文章内链的名字表：标题 / 文件名（含去掉日期前缀的短名）/ slug 都能指向同一篇
+  POST_LINKS.clear();
+  POST_LINK_MISSING.length = 0;
+  for (const p of pages) {
+    const stem = p.entry.file.replace(/\.md$/i, '');
+    const short = stem.replace(/^\d{4}-\d{1,2}-\d{1,2}[-_ ]?/, '');
+    for (const name of [stem, short, p.entry.title, p.slug]) {
+      const key = postKey(name);
+      if (key && !POST_LINKS.has(key)) POST_LINKS.set(key, p.slug);
+    }
+  }
+
   let latest = '';
   for (const p of pages) if (p.entry.date && p.entry.date > latest) latest = p.entry.date;
 
@@ -2612,7 +2966,7 @@ function main(): void {
   // prefix：从当前页面回到站点根的相对前缀（文章页在 posts/ 里，取 '../'）
   const footerFor = (prefix: string): string =>
     `<footer>${esc(SITE.name)}${counts ? `，共 ${total} 篇（${counts}）` : ''}${latest ? `，最近更新 ${latest}` : ''}。 ` +
-    `<a href="${prefix}stats.html">写作统计</a></footer>`;
+    `<a href="${prefix}stats.html">写作统计</a> · <a href="${prefix}feed.xml">RSS</a></footer>`;
 
   const bar =
     `<header class="bar"><h1>${esc(SITE.name)}<small>${esc(small)}</small></h1>` +
@@ -2709,6 +3063,7 @@ function main(): void {
   });
   writeFileSync(join(SITE_ROOT, 'stats.html'), renderStatsPage(pages), 'utf8');
   writeSearchIndex(pages);
+  writeFeed(pages);
   copyOgCard();
 
   // 清理改过名 / 已删除文章留下的旧页面（只动文章目录根部的 .html）
@@ -2752,6 +3107,11 @@ function main(): void {
   if (WIKI_MISSING.length > 0) {
     console.warn(
       `提示：${WIKI_MISSING.length} 个 [[#小节]] 内链没找到同名标题（${[...new Set(WIKI_MISSING.map((x) => x.target))].slice(0, 6).join('、')}）；要和正文里的小节标题一字不差。`,
+    );
+  }
+  if (POST_LINK_MISSING.length > 0) {
+    console.warn(
+      `提示：${POST_LINK_MISSING.length} 个 [[文章名]] 内链没找到对应文章（${[...new Set(POST_LINK_MISSING)].slice(0, 6).join('、')}）；写文件名（日期前缀可省）或文章标题都能对上。`,
     );
   }
   console.log(`栏目 ${nonEmpty.length} ｜ 共 ${total} 篇${counts ? ` ｜ ${counts}` : ''}`);

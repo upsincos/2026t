@@ -13,3 +13,5 @@ dist/
 
 # 构建时复制到站点根的默认分享卡片（源文件 static/og.png）
 /og.png
+# 订阅源（构建时生成）
+/feed.xml
