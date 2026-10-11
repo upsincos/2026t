@@ -1590,20 +1590,20 @@ footer a{color:var(--t2)}
   position:relative;border-bottom:1px solid var(--divider)}
 .body h4::after{content:"";position:absolute;left:0;bottom:-1px;width:30px;height:2px;border-radius:2px;
   background:var(--mk);opacity:.8}
-/* ### · 目：左侧竖条（局部标记） */
-.body h5{font-size:16px;margin:26px 0 9px;padding-left:11px;position:relative}
-.body h5::before{content:"";position:absolute;left:0;top:.3em;bottom:.3em;width:3px;border-radius:2px;
-  background:var(--mk);opacity:.55}
+/* ### · 目：行首短竖标——只标第一行，不做通高竖条（通高竖条是引用块/callout 的形态） */
+.body h5{font-size:16px;margin:26px 0 9px;padding-left:10px;position:relative}
+.body h5::before{content:"";position:absolute;left:0;top:.4em;width:3px;height:.75em;border-radius:2px;
+  background:var(--mk);opacity:.5}
 /* #### · 点：前缀方块（最小标记，色最浅）；加粗正文没有方块，仍一眼可辨 */
 .body h6{font-size:15px;margin:22px 0 8px;color:var(--t2);font-weight:600;padding-left:16px;position:relative}
 .body h6::before{content:"";position:absolute;left:1px;top:.5em;width:7px;height:7px;border-radius:2px;
   background:var(--mk);opacity:.34}
-/* 纯数字标题（01、02…）：单拎成中性小徽标——步骤连排时一眼数得清，也不给正文引入彩色；
-   下方紧跟的加粗行即步骤小标题，徽标 + 标题在视觉上合成一组 */
-.body .hnum{display:inline-block;margin:30px 0 9px;padding:3px 13px;border:0;border-radius:999px;
-  background:var(--bg-mute);color:var(--t2);font-size:13px;font-weight:600;letter-spacing:.08em;
-  font-variant-numeric:tabular-nums;line-height:1.6}
+/* 纯数字标题（01、02…）：安静的小号数字，无底色无边框；与下方步骤标题贴紧成组 */
+.body .hnum{margin:30px 0 4px;padding:0;border:0;background:none;font-size:14px;font-weight:600;
+  color:var(--t2);letter-spacing:.12em;font-variant-numeric:tabular-nums;line-height:1.5}
 .body .hnum::before,.body .hnum::after{content:none}
+/* 数字标题后紧跟的一段是步骤小标题：加粗拉开层次 */
+.body .hnum + p{font-weight:600}
 /* 从提要 / 目录点进来的落点：整行中性底 + 一道品牌色左耳，一眼能认出来。
    纯 CSS（:target），不用脚本也不做动画，所以「减弱动态效果」下同样可见。 */
 .body h3:target,.body h4:target,.body h5:target,.body h6:target{
