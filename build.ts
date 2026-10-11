@@ -908,6 +908,18 @@ function inline(s: string, mdDir = '', prefix = ''): string {
     if (cpLen(shown) > 62) shown = cpSlice(shown, 0, 59) + '…';
     return hold(`<a href="${escAttr(u)}" target="_blank" rel="noopener">${esc(shown)}</a>`);
   });
+  // 脚注引用 [^1]：编号按首次引用顺序；收尾由 mdToHtml 统一列出
+  if (FNSTATE) {
+    out = out.replace(/\[\^([^\]\s]+)\]/g, (m0, id: string) => {
+      const st = FNSTATE;
+      if (!st || !st.defs.has(id)) return m0;
+      let n = st.num.get(id);
+      if (!n) { n = st.num.size + 1; st.num.set(id, n); }
+      const first = !st.referenced.has(id);
+      st.referenced.add(id);
+      return hold(`<sup class="fnr"><a href="#fn-${n}"${first ? ` id="fnref-${n}"` : ''}>${n}</a></sup>`);
+    });
+  }
   out = esc(out);
   // 粗体 / 斜体
   out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -1055,8 +1067,17 @@ function normHead(s: string): string {
   return s.replace(/\s+/g, '').replace(/[‘’“”"']/g, '"');
 }
 
+/* 脚注状态（每次 mdToHtml 调用重置）：defs=定义表；num=编号表（按首次引用排序）；referenced=被引用过的 */
+let FNSTATE: { defs: Map<string, string>; num: Map<string, number>; referenced: Set<string> } | null = null;
+
 function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): string {
+  FNSTATE = { defs: new Map(), num: new Map(), referenced: new Set() };
   const lines = md.replace(/\r\n?/g, '\n').split('\n');
+  // 脚注定义先整体收进表里（正文引用出现在定义之前，必须先有表才能识别引用）
+  for (const l of lines) {
+    const fdm = /^\[\^([^\]\s]+)\]:\s*(.*)$/.exec(l.trim());
+    if (fdm) FNSTATE.defs.set(fdm[1], fdm[2]);
+  }
   const out: string[] = [];
   let i = 0;
   let hIdx = 0;
@@ -1079,6 +1100,15 @@ function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): strin
       i++;
       out.push(`<pre class="code"><code${lang ? ` class="lang-${lang}"` : ''}>${esc(buf.join('\n'))}</code></pre>`);
       continue;
+    }
+    // 脚注定义 [^1]: …（收尾统一挂到文末「注释」里，不参与正文流）
+    if (FNSTATE) {
+      const fdm = /^\[\^([^\]\s]+)\]:\s*(.*)$/.exec(ln.trim());
+      if (fdm) {
+        FNSTATE.defs.set(fdm[1], fdm[2]);
+        i++;
+        continue;
+      }
     }
     // 标题：# → h2，## → h3，### → h4，#### → h5，##### → h6（h1 留给文章大标题；带 #h-N 锚点，供目录联动）
     m = /^(#{1,6})\s+(.*)$/.exec(ln);
@@ -1241,7 +1271,22 @@ function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): strin
     }
     flushPara();
   }
-  return resolveWikiLinks(out.join('\n'), wikiLabel);
+  // 脚注列表：按引用顺序编号；没被引用过的定义也列出（不挂回跳）
+  let fnHtml = '';
+  if (FNSTATE && FNSTATE.defs.size) {
+    const st = FNSTATE;
+    for (const k of st.defs.keys()) if (!st.num.has(k)) st.num.set(k, st.num.size + 1);
+    const items = [...st.num.entries()]
+      .sort((a, b) => a[1] - b[1])
+      .map(([k, n]) => {
+        const txt = inline(st.defs.get(k) ?? '', mdDir, prefix);
+        const back = st.referenced.has(k) ? ` <a class="fnb" href="#fnref-${n}" aria-label="回到引用处">↩</a>` : '';
+        return `<li id="fn-${n}">${txt}${back}</li>`;
+      })
+      .join('');
+    fnHtml = `<section class="fns"><ol>${items}</ol></section>`;
+  }
+  return resolveWikiLinks(out.join('\n') + fnHtml, wikiLabel);
 }
 
 /* ═══════════════ 样式与脚本 ═══════════════ */
@@ -1426,6 +1471,8 @@ body>main{margin-left:auto;margin-right:auto}
 .imeta .tag{margin-right:3px;vertical-align:1px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .tag{font:400 11px/1 var(--ui-font);padding:4px 9px;border-radius:999px;background:var(--bg-mute);color:var(--t3)}
+a.tag{transition:color .15s}
+a.tag:hover{color:var(--brand-1);text-decoration:none}
 .badge{font:500 11px/1 var(--ui-font);padding:4px 9px;border-radius:999px;border:1px solid transparent}
 .gA{background:var(--green-soft);color:var(--green-1);border-color:var(--green-soft)}
 .gB{background:var(--yellow-soft);color:var(--yellow-1);border-color:var(--yellow-soft)}
@@ -1598,6 +1645,17 @@ html[data-read=book] .bookbar{display:flex;align-items:center;justify-content:ce
 .st-tag{display:inline-flex;align-items:baseline;gap:7px;padding:6px 11px;border-radius:999px;
   background:var(--bg-mute);color:var(--t2);font-size:12.5px}
 .st-tag i{font-style:normal;font-size:11px;color:var(--t3);font-variant-numeric:tabular-nums}
+a.st-tag{transition:color .15s}
+a.st-tag:hover{color:var(--brand-1)}
+/* 要点页：==高亮== 自动汇总的划线清单 */
+.hl-list{list-style:none;margin:2px 0 6px;padding:0}
+.hl-list a{display:flex;align-items:baseline;gap:12px;padding:9px 2px;border-bottom:1px solid var(--divider);color:var(--t1);line-height:1.75}
+.hl-list a:hover{color:var(--brand-1);text-decoration:none}
+.hl-list a:hover .hl-d{color:var(--brand-1)}
+.hl-d{flex:none;min-width:74px;font-size:12.5px;color:var(--t3);font-variant-numeric:tabular-nums}
+.hl-x{flex:1;min-width:0;font-size:14.5px}
+.hl-s{flex:none;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:var(--t3)}
+@media (max-width:640px){.hl-s{display:none}}
 /* 按月回顾：写作统计页里的时间线入口（每篇都是链接），纯静态 */
 .st-arch{display:grid;gap:14px;margin:2px 0 6px}
 .st-mo-h{display:flex;align-items:baseline;gap:8px;margin:0 0 2px;padding-bottom:5px;
@@ -1669,6 +1727,18 @@ footer a{color:var(--t2)}
    纯 CSS（:target），不用脚本也不做动画，所以「减弱动态效果」下同样可见。 */
 .body h2:target,.body h3:target,.body h4:target,.body h5:target,.body h6:target{
   background:var(--bg-alt);border-radius:6px}
+/* 脚注（[^1]）：正文里右上角的小号编号，文末统一列出（[^1]: 定义） */
+.body sup.fnr a{font-size:11px;font-weight:600;color:var(--brand-1);padding:0 1px;font-variant-numeric:tabular-nums}
+.body sup.fnr a:hover{text-decoration:underline;text-underline-offset:2px}
+.body .fns{margin:36px 0 0;padding:14px 0 0;border-top:1px solid var(--divider);font-size:13.5px;line-height:1.8;color:var(--t2)}
+.body .fns ol{margin:0;padding-left:22px}
+.body .fns li{margin:5px 0}
+.body .fns li:target{background:var(--bg-alt);border-radius:6px}
+.body .fns .fnb{color:var(--t3);text-decoration:none;margin-left:3px}
+.body .fns .fnb:hover{color:var(--brand-1)}
+/* 文本选中：品牌色淡底，和「彩色只给交互态」一致 */
+::selection{background:rgba(100,108,255,.18)}
+[data-theme=dark] ::selection{background:rgba(168,177,255,.26)}
 .body ul,.body ol{margin:0 0 10px;padding-left:22px}
 .body li{margin:3px 0}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
@@ -1837,6 +1907,8 @@ function stripMd(md: string): string {
   t = t.replace(/==([^=]+)==/g, '$1');                    // 高亮
   t = t.replace(/~~([^~]+)~~/g, '$1');                    // 删除线
   t = t.replace(/\[![A-Za-z+-]+\]/g, ' ');                // 提醒块记号
+  t = t.replace(/^\s{0,3}\[\^[^\]]+\]:.*$/gm, ' ');       // 脚注定义行
+  t = t.replace(/\[\^[^\]]+\]/g, ' ');                    // 脚注引用
   t = t.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');          // 链接只留文字
   t = t.replace(/`([^`]+)`/g, '$1');
   t = t.replace(/^\s{0,3}#{1,6}\s+/gm, '');               // 标题记号
@@ -1986,7 +2058,7 @@ function pageHead(title: string, desc: string, meta: HeadMeta = {}): string {
 function chipsRow(p: PageRef): string {
   const sec = `<span class="tag">${esc(p.secLabel)}</span>`;
   const date = p.entry.date ? `<span class="tag">${esc(p.entry.date)}</span>` : '';
-  const tags = p.entry.tags.map((t) => `<span class="tag">#${esc(t)}</span>`).join('');
+  const tags = p.entry.tags.map((t) => `<a class="tag" href="../index.html?tag=${encodeURIComponent(t)}">#${esc(t)}</a>`).join('');
   return `<div class="chips">${sec}${date}${tags}</div>`;
 }
 
@@ -2295,7 +2367,7 @@ function loadIdx(){
 function recOf(it){
   if(!byHref) return null;
   const a=it._a||(it._a=it.querySelector('.ititle'));
-  const r=a?byHref[a.getAttribute('href')]:null;
+  const r=a?byHref[it._base||a.getAttribute('href')]:null;
   /* 正文索引里是未小写的原文；每次敲键对 300 条各做一遍 toLowerCase 太亏，缓存在记录上只算一次 */
   if(r&&r._lb===undefined) r._lb=(r.b||'').toLowerCase();
   return r||null;
@@ -2351,10 +2423,14 @@ function markAll(root,term){
 function apply(){
   const term=q.value.trim().toLowerCase();
   const parts=term?term.split(/\s+/):[];
+  /* 搜索时给结果链接带上 ?q=：文章页会定位到命中句（标签筛选 #… 不加） */
+  const jumpQ=(term&&term.charAt(0)!=='#'&&parts[0])?encodeURIComponent(parts[0]):'';
   clearMarks(list);
   let shown=0;
   const matched=[];
   items.forEach(it=>{
+    const a0=it._a||(it._a=it.querySelector('.ititle'));
+    if(a0&&it._base===undefined) it._base=a0.getAttribute('href')||'';
     const ex=it._ex;
     /* 只在内容真的不同时写 textContent：不然每次敲键都给 300 条重写一遍文本节点 */
     if(ex){const o=exOrig.get(it)||'';if(ex.textContent!==o)ex.textContent=o;}
@@ -2366,6 +2442,7 @@ function apply(){
       if(r&&hasAll(r._lb,parts)){ok=true;if(ex)ex.textContent=snip(r.b,parts[0]);}
     }
     it.classList.toggle('hidden',!ok);
+    if(a0){const want=(ok&&jumpQ)?it._base+'?q='+jumpQ:it._base;if(it._q!==want){it._q=want;a0.setAttribute('href',want);}}
     if(ok){shown++;matched.push(it);}
   });
   matched.forEach((it,i)=>it.classList.toggle('cut',i>=cap));
@@ -2413,6 +2490,11 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&document.activeElement===q){q.value='';apply();q.blur();}
 });
 setMode('all');
+/* ?tag= 直达筛选：从文章页 / 统计页的标签点进来时直接筛好 */
+try{
+  const tg=(new URLSearchParams(location.search).get('tag')||'').trim();
+  if(tg){tagsdUI(tg);q.value='#'+tg;cap=PAGE;apply();}
+}catch(e){}
 if(moreBtn) moreBtn.onclick=()=>{cap+=PAGE;apply();};
 /* 标签下拉：点开/收起、选中、外点关闭、Esc 关闭；与搜索框双向同步 */
 function tagsdUI(t){
@@ -2655,7 +2737,37 @@ if(pl){
     }
   }
   paint();
-}`;
+}
+/* ?q= 命中定位：从首页搜索结果点进来时，滚到正文第一处命中并高亮 */
+(function(){
+  var t='';
+  try{ t=(new URLSearchParams(location.search).get('q')||'').trim(); }catch(e){ t=''; }
+  if(!t) return;
+  var term=t.split(/\s+/)[0].toLowerCase();
+  if(!term) return;
+  var root=document.querySelector('.body');
+  if(!root) return;
+  var walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null);
+  var nodes=[],n;
+  while((n=walker.nextNode())){ if(n.nodeValue&&n.nodeValue.toLowerCase().indexOf(term)>=0) nodes.push(n); }
+  var first=null,used=0,k;
+  for(k=0;k<nodes.length&&used<150;k++){
+    var node=nodes[k],text=node.nodeValue,low=text.toLowerCase(),i=low.indexOf(term),last=0,frag=document.createDocumentFragment();
+    if(i<0) continue;
+    while(i>=0&&used<150){
+      frag.appendChild(document.createTextNode(text.slice(last,i)));
+      var mk=document.createElement('mark');
+      mk.textContent=text.slice(i,i+term.length);
+      frag.appendChild(mk); if(!first)first=mk; used++;
+      last=i+term.length; i=low.indexOf(term,last);
+    }
+    frag.appendChild(document.createTextNode(text.slice(last)));
+    node.parentNode.replaceChild(frag,node);
+  }
+  if(first&&document.documentElement.getAttribute('data-read')!=='book'){
+    try{ first.scrollIntoView({block:'center'}); }catch(e2){ first.scrollIntoView(); }
+  }
+})();`;
 
 /* ── 全文搜索索引：首页首次搜索时才加载 assets/search.js，首屏不受影响。
       用 <script> 而不是 fetch，是因为 fetch 在本地 file:// 预览下会被浏览器拦掉。 ── */
@@ -2813,7 +2925,7 @@ function renderStatsPage(pages: PageRef[]): string {
   const tags = [...tagAgg.entries()]
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
     .slice(0, 16)
-    .map(([t, n]) => `<span class="st-tag">#${esc(t)}<i>${n}</i></span>`)
+    .map(([t, n]) => `<a class="st-tag" href="index.html?tag=${encodeURIComponent(t)}">#${esc(t)}<i>${n}</i></a>`)
     .join('');
 
   // 按月回顾：把有日期的文章按月倒序列出来，作为「定期回看 / 大总结」的入口
@@ -2868,6 +2980,88 @@ function renderStatsPage(pages: PageRef[]): string {
     pageHead(`写作统计 · ${SITE.name}`, `${SITE.name}的写作量统计：按月发文、栏目与标签分布。`, {
       title: '写作统计',
       url: 'stats.html',
+      imageW: OG_CARD_W,
+      imageH: OG_CARD_H,
+    }) +
+    bar +
+    main +
+    TOP_BTN +
+    '<script>' +
+    JS_BASE +
+    '</script></body></html>'
+  );
+}
+
+/* ── 要点页：把每篇正文里 ==高亮== 划出的句子汇成一页（构建时算好，纯静态） ── */
+interface HighlightItem {
+  date: string;
+  text: string;
+  url: string;
+  sec: string;
+  post: string;
+}
+
+function collectHighlights(pages: PageRef[]): HighlightItem[] {
+  const out: HighlightItem[] = [];
+  for (const p of pages) {
+    const md = p.entry.body;
+    if (!md.includes('==')) continue;
+    const lines = md.replace(/\r\n?/g, '\n').split('\n');
+    let hIdx = 0, curH = '', curId = '', fence = false, inCard = false;
+    for (const ln of lines) {
+      if (/^```/.test(ln)) { fence = !fence; continue; }
+      if (fence) continue;
+      const t = ln.trim();
+      if (!inCard && /^:::(?!:)/.test(t)) { inCard = true; }
+      else if (inCard && t === ':::') { inCard = false; }
+      if (!inCard) {
+        const hm = /^(#{1,6})\s+(.*)$/.exec(ln);
+        if (hm) { hIdx++; curId = `h-${hIdx}`; curH = stripMd(hm[2]).trim(); }
+      }
+      const re = /==([^=]+)==/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(ln))) {
+        const text = stripMd(m[1]).trim();
+        if (!text) continue;
+        out.push({
+          date: p.entry.date || '',
+          text,
+          sec: curH,
+          post: p.entry.title,
+          url: `${p.outName}${curId ? '#' + curId : ''}`,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+function renderHighlightsPage(pages: PageRef[]): string {
+  const hl = collectHighlights(pages);
+  const rows = hl
+    .map((h) => {
+      const tip = (h.post ? h.post + (h.sec ? ' · ' : '') : '') + h.sec;
+      return (
+        `<li><a href="${escAttr(h.url)}"${tip ? ` title="${escAttr(tip)}"` : ''}>` +
+        `<span class="hl-d">${esc(h.date || '—')}</span>` +
+        `<span class="hl-x">${esc(h.text)}</span>` +
+        `<span class="hl-s">${esc(h.sec || h.post)}</span></a></li>`
+      );
+    })
+    .join('');
+  const body = hl.length
+    ? `<p class="st-lead">共 ${hl.length} 条 · 写作时用 <code>==高亮==</code> 划出的句子会自动收进这里；点任意一条回到原文对应小节。</p>` +
+      `<ul class="hl-list">${rows}</ul>`
+    : `<p class="st-lead">还没有划线要点。写作时把想回顾的句子用 <code>==高亮==</code> 圈起来，构建后就会出现在这里。</p>`;
+  const bar =
+    `<header class="bar"><a class="back" href="${escAttr(basename(OUT_FILE))}">← 返回首页</a>` +
+    `<div class="brand">${esc(SITE.name)}</div><div class="spacer"></div>` +
+    `<button class="btn" id="theme">明/暗</button>` + LOOK_BAR + `</header>`;
+  const main = `<main class="article"><h1>要点</h1><div class="body">${body}</div></main>`;
+  return (
+    pageHead(`要点 · ${SITE.name}`, `${SITE.name}的划线要点：==高亮== 汇总，按时间倒序。`, {
+      title: '要点',
+      url: 'highlights.html',
       imageW: OG_CARD_W,
       imageH: OG_CARD_H,
     }) +
@@ -2994,7 +3188,7 @@ function main(): void {
   // prefix：从当前页面回到站点根的相对前缀（文章页在 posts/ 里，取 '../'）
   const footerFor = (prefix: string): string =>
     `<footer>${esc(SITE.name)}${counts ? `，共 ${total} 篇（${counts}）` : ''}${latest ? `，最近更新 ${latest}` : ''}。 ` +
-    `<a href="${prefix}stats.html">写作统计</a> · <a href="${prefix}feed.xml">RSS</a></footer>`;
+    `<a href="${prefix}highlights.html">要点</a> · <a href="${prefix}stats.html">写作统计</a> · <a href="${prefix}feed.xml">RSS</a></footer>`;
 
   const bar =
     `<header class="bar"><h1>${esc(SITE.name)}<small>${esc(small)}</small></h1>` +
@@ -3059,6 +3253,7 @@ function main(): void {
         `</div></div></div>`
       : '') +
     `<div class="sblock"><div class="gt">更多</div>` +
+    `<a class="sitem" href="highlights.html"><span>要点</span></a>` +
     `<a class="sitem" href="stats.html"><span>写作统计</span></a></div>` +
     `</aside>`;
 
@@ -3090,6 +3285,7 @@ function main(): void {
     writeFileSync(join(PAGES_OUT, `${p.slug}.html`), renderPostPage(pages, i, footerFor(PAGE_PREFIX)), 'utf8');
   });
   writeFileSync(join(SITE_ROOT, 'stats.html'), renderStatsPage(pages), 'utf8');
+  writeFileSync(join(SITE_ROOT, 'highlights.html'), renderHighlightsPage(pages), 'utf8');
   writeSearchIndex(pages);
   writeFeed(pages);
   copyOgCard();
