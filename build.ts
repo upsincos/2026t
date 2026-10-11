@@ -1116,7 +1116,7 @@ function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): strin
       const lvl = Math.min(m[1].length + 1, 6);
       const ht = m[2].trim();
       const hc = /^\d{1,3}[.、]?$/.test(ht) ? ' class="hnum"' : '';
-      out.push(`<h${lvl} id="h-${++hIdx}"${hc}>${inline(ht, mdDir, prefix)}</h${lvl}>`);
+      out.push(`<h${lvl} id="h-${++hIdx}"${hc}><span class="ht">${inline(ht, mdDir, prefix)}</span></h${lvl}>`);
       i++;
       continue;
     }
@@ -1305,6 +1305,7 @@ const CSS = `
   --red-1:#b8272c;--red-soft:rgba(244,63,94,.12);
   --gray-1:#565a5f;--gray-soft:rgba(142,150,170,.15);
   --mark:rgba(234,179,8,.34);
+  --hl:rgba(60,60,67,.08);
   --ui-font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
   --font:var(--ui-font);
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
@@ -1321,6 +1322,7 @@ const CSS = `
   --red-1:#f66f81;--red-soft:rgba(244,63,94,.16);
   --gray-1:#a4a8ae;--gray-soft:rgba(142,150,170,.16);
   --mark:rgba(234,179,8,.3);
+  --hl:rgba(235,235,245,.1);
 }
 
 /* ── 阅读外观：底色 / 字体（全局，存在 localStorage，换页也生效）
@@ -1723,10 +1725,17 @@ footer a{color:var(--t2)}
 .body .ck ul{margin:0 0 6px;padding-left:20px;font-size:14.5px}
 .body .ck ul:last-child{margin-bottom:0}
 .body .ck li{margin:2px 0}
-/* 从提要 / 目录点进来的落点：只铺一层中性底，不做任何色条（标题上零彩色）。
-   纯 CSS（:target），不用脚本也不做动画，所以「减弱动态效果」下同样可见。 */
-.body h2:target,.body h3:target,.body h4:target,.body h5:target,.body h6:target{
-  background:var(--bg-alt);border-radius:6px}
+/* 标题「当前」淡底：一层只贴住文字的小底（.ht 内联盒）——
+   内边距与圆角按字号等比、换行时每行各自收口；负左边距保证文字仍与正文对齐。
+   谁上色：滚动时当前小节（与左侧目录高亮共用同一个观察器，滚到哪两边一起动）；
+   点目录 / 提要跳转时落点立即上色。只做背景色过渡：淡入 .28s、淡出 .5s，不做位移。 */
+.body .ht{padding:.1em .45em;margin-left:-.45em;border-radius:.42em;
+  -webkit-box-decoration-break:clone;box-decoration-break:clone;
+  transition:background-color .5s ease}
+.body h2.cur .ht,.body h3.cur .ht,.body h4.cur .ht,.body h5.cur .ht,.body h6.cur .ht{
+  background:var(--hl);transition-duration:.28s}
+html:not(.js) .body h2:target .ht,html:not(.js) .body h3:target .ht,html:not(.js) .body h4:target .ht,
+html:not(.js) .body h5:target .ht,html:not(.js) .body h6:target .ht{background:var(--hl);transition-duration:.28s}
 /* 脚注（[^1]）：正文里右上角的小号编号，文末统一列出（[^1]: 定义） */
 .body sup.fnr a{font-size:11px;font-weight:600;color:var(--brand-1);padding:0 1px;font-variant-numeric:tabular-nums}
 .body sup.fnr a:hover{text-decoration:underline;text-underline-offset:2px}
@@ -1797,8 +1806,11 @@ footer a{color:var(--t2)}
 .body figcaption{margin:8px auto 0;max-width:52ch;font-size:12.5px;color:var(--t3);line-height:1.65;text-align:center}
 
 /* ── 灯箱：点图全屏，点任意处 / Esc 关闭 ── */
-#lb{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;background:rgba(8,8,10,.86);cursor:zoom-out}
-#lb.open{display:flex}
+/* 灯箱：淡入淡出只动透明度（不做位移）；收起后等淡完再让出点击 */
+#lb{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:rgba(8,8,10,.86);cursor:zoom-out;
+  opacity:0;visibility:hidden;pointer-events:none;
+  transition:opacity .24s ease,visibility 0s linear .24s}
+#lb.open{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .24s ease}
 #lb img{max-width:96vw;max-height:94vh;border-radius:8px;box-shadow:0 10px 44px rgba(0,0,0,.55)}
 
 /* 宽屏（侧栏可见）：工具归右侧（搜索 + 明暗） */
@@ -2548,6 +2560,16 @@ if(lb){
 /* 目录联动（原书同款）：滚动时高亮当前小节；手机端下拉跟随，选中即跳转 */
 const tocLinks=[...document.querySelectorAll('.toc a')];
 const jumpSel=document.getElementById('jump');
+/* 「当前标题」淡底：同一时刻只给一个标题上 .cur，和目录高亮共用同一个观察器——滚到哪，两边一起动 */
+let curHead=null;
+function setCurHead(id){
+  const el=id?document.getElementById(id):null;
+  const h=el&&/^H[2-6]$/.test(el.tagName)?el:null;
+  if(h===curHead) return;
+  if(curHead) curHead.classList.remove('cur');
+  curHead=h;
+  if(h) h.classList.add('cur');
+}
 if(tocLinks.length){
   const heads=[...document.querySelectorAll('.body h2[id],.body h3[id],.body h4[id],.body h5[id],.body h6[id]')];
   const io=new IntersectionObserver(es=>{
@@ -2555,6 +2577,7 @@ if(tocLinks.length){
       const id=e.target.id;
       tocLinks.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+id));
       if(jumpSel) jumpSel.value=id;
+      if(!bkOn()) setCurHead(id);
     }});
   },{rootMargin:'-70px 0px -75% 0px'});
   heads.forEach(h=>io.observe(h));
@@ -2565,6 +2588,9 @@ if(tocLinks.length){
     if(el) el.scrollIntoView({block:'start'});
   });
 }
+/* 点目录 / 提要跳转：落点立刻上色，不等滚动观察器 */
+addEventListener('hashchange',()=>{ if(location.hash.length>1) setCurHead(location.hash.slice(1)); });
+if(location.hash.length>1) setCurHead(location.hash.slice(1));
 /* ── 阅读模式：书页（分栏翻页）/ 滚动 ──
    书页 = 正文按 CSS 分栏、整块左移一栏就是一页：翻页只写一次 transform，
    不测量文字、不切 DOM、不重排，所以大文章也不卡。
@@ -2609,6 +2635,7 @@ function bkSpy(){
   bkHeads().forEach(h=>{if(bkPageOf(h)<=bkPage) hit=h;});
   tocLinks.forEach(a=>a.classList.toggle('active',!!hit&&a.getAttribute('href')==='#'+hit.id));
   if(jumpSel&&hit) jumpSel.value=hit.id;
+  setCurHead(hit?hit.id:null);
 }
 function bkToId(id){
   const el=document.getElementById(id);
