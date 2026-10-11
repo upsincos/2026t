@@ -1688,21 +1688,22 @@ footer a{color:var(--t2)}
   font-variant-numeric:lining-nums}
 .body p{margin:0 0 10px}
 .body p:last-child{margin-bottom:2px}
-/* 标题五级（# → h2 … ##### → h6，h1 留给文章大标题）：纯字阶层级，零装饰——
-   没有线条 / 色块 / 方块 / 竖标，只靠 字号 × 墨色 × 留白 区分，等级越深越安静：
-   骨架两级（#/##）走深墨、逐级收小；二级细节（###）保持深墨靠尺寸降级；
-   细分级（####/#####）退到灰阶，是整条阶梯上最安静的两档。加粗正文没有任何标记，一眼可与标题分开。 */
-.body h2,.body h3,.body h4,.body h5,.body h6{line-height:1.5;font-weight:600}
-/* # · 章 */
-.body h2{font-size:22px;font-weight:650;letter-spacing:-.4px;color:var(--ink);margin:56px 0 16px}
-/* ## · 节 */
-.body h3{font-size:19px;letter-spacing:-.3px;color:var(--ink);margin:42px 0 12px}
-/* ### · 目 */
-.body h4{font-size:17px;color:var(--ink);margin:32px 0 10px}
-/* #### · 点：退到灰阶（78%）——不低于正文尺寸，靠色阶保持安静 */
-.body h5{font-size:16px;color:var(--t2);margin:26px 0 8px}
-/* ##### · 细：最安静的一档（56%） */
-.body h6{font-size:15.5px;color:var(--t3);margin:22px 0 7px}
+/* 标题五级（# → h2 … ##### → h6，h1 留给文章大标题）：零装饰、三段层级——
+   大段（#/##）：大而紧（全墨、负字距、大留白）；
+   中段（###）：稳标题（比正文大半档、满墨、中性字距）；
+   签段（####/#####）：小而疏（字号收小、字距大幅拉开、墨色退档）——书页边上的小签质感。
+   相邻两级同时变化 字号×字重×字距×墨色×留白 多个轴，「#  ##  ###」是三个族，不是大小的三连缩。 */
+.body h2,.body h3,.body h4,.body h5,.body h6{line-height:1.5;text-wrap:balance}
+/* # · 章：大而紧（罕见级，给足分量） */
+.body h2{font-size:24px;font-weight:650;letter-spacing:-.025em;color:var(--ink);margin:64px 0 18px}
+/* ## · 节：大而紧 */
+.body h3{font-size:20px;font-weight:650;letter-spacing:-.02em;color:var(--ink);margin:48px 0 14px}
+/* ### · 目：稳标题——比正文加粗更大一号、更重、满墨，绝不与加粗正文混淆 */
+.body h4{font-size:17px;font-weight:700;letter-spacing:-.005em;color:var(--ink);margin:34px 0 11px}
+/* #### · 点：签段开始——疏排小签、墨退一档 */
+.body h5{font-size:14px;font-weight:600;letter-spacing:.12em;color:var(--t2);margin:27px 0 8px;line-height:1.45}
+/* ##### · 注：最疏最浅 */
+.body h6{font-size:12px;font-weight:600;letter-spacing:.24em;color:var(--t3);margin:20px 0 6px;line-height:1.45}
 /* 纯数字标题（01、02…）：安静的小号数字，无底色无边框；与下方步骤标题贴紧成组 */
 .body .hnum{margin:30px 0 4px;padding:0;border:0;background:none;font-size:14px;font-weight:600;
   color:var(--t2);letter-spacing:.12em;font-variant-numeric:tabular-nums;line-height:1.5}
