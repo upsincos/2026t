@@ -925,7 +925,8 @@ function isBlockStart(l: string): boolean {
     /^```/.test(l) ||
     /^\s*>/.test(l) ||
     /^\s*([-*+]|\d+[.、)])\s+/.test(l) ||
-    /^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(l)
+    /^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(l) ||
+    /^:::(?!:)\s*\S/.test(l.trim())
   );
 }
 
@@ -1131,6 +1132,56 @@ function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): strin
           `<blockquote>${cbody.map((t) => `<p>${inline(t, mdDir, prefix)}</p>`).join('')}</blockquote>`,
         );
       }
+      continue;
+    }
+    // 条目卡（::: 块）：阶段 / 步骤 / 规则等结构化条目的轻卡片。
+    // 「::: [编号] 标题 [｜ 徽章]」开启，单独一行「:::」收尾；正文支持空行分段与 - 列表。
+    const ckm = /^:::(?!:)\s*(\S.*)$/.exec(ln.trim());
+    if (ckm) {
+      const chead = ckm[1].trim();
+      const cbody: string[] = [];
+      i++;
+      while (i < lines.length && lines[i].trim() !== ':::') {
+        cbody.push(lines[i]);
+        i++;
+      }
+      i++;
+      let ctitle = chead;
+      let cbadge = '';
+      const cbm = /^(.*)[|｜]\s*([^|｜]+)$/.exec(chead);
+      if (cbm) {
+        ctitle = cbm[1].trim();
+        cbadge = cbm[2].trim();
+      }
+      let cnum = '';
+      const cnm = /^(\d{1,3})[\s.、．:：)）\]]+(.+)$/.exec(ctitle);
+      if (cnm) {
+        cnum = cnm[1];
+        ctitle = cnm[2].trim();
+      } else if (/^\d{1,3}$/.test(ctitle)) {
+        cnum = ctitle;
+        ctitle = '';
+      }
+      const cblocks: string[][] = [];
+      let ccur: string[] = [];
+      for (const t of cbody) {
+        if (!t.trim()) {
+          if (ccur.length) { cblocks.push(ccur); ccur = []; }
+        } else ccur.push(t);
+      }
+      if (ccur.length) cblocks.push(ccur);
+      const chin: string[] = [];
+      for (const b of cblocks) {
+        if (b.every((t) => /^\s*([-*+]|\d+[.、)])\s+/.test(t))) {
+          chin.push(`<ul>${b.map((t) => `<li>${inline(t.replace(/^\s*([-*+]|\d+[.、)])\s+/, ''), mdDir, prefix)}</li>`).join('')}</ul>`);
+        } else {
+          chin.push(`<p>${b.map((t) => inline(t.trim(), mdDir, prefix)).join('\n')}</p>`);
+        }
+      }
+      const chrow = cnum || ctitle || cbadge
+        ? `<div class="ck-h">${cnum ? `<span class="ck-n">${cnum}</span>` : ''}<span class="ck-t">${inline(ctitle, mdDir, prefix)}</span>${cbadge ? `<span class="ck-b">${inline(cbadge, mdDir, prefix)}</span>` : ''}</div>`
+        : '';
+      out.push(`<div class="ck">${chrow}${chin.join('')}</div>`);
       continue;
     }
     // 表格（Obsidian 管道表格）：连续 | 行，第二行为 |---|---| 才算数，否则按普通段落回落
@@ -1505,7 +1556,7 @@ html[data-read=book] .bookwrap{flex:1;min-height:0;overflow:hidden}
 html[data-read=book] .book{height:100%;columns:1;column-gap:56px;column-fill:auto;
   transition:transform .3s cubic-bezier(.22,.61,.36,1)}
 html[data-read=book] .book.noanim{transition:none}
-html[data-read=book] .body figure,html[data-read=book] .body pre.code,html[data-read=book] .body .co,
+html[data-read=book] .body figure,html[data-read=book] .body pre.code,html[data-read=book] .body .co,html[data-read=book] .body .ck,
 html[data-read=book] .body li,html[data-read=book] .pager,html[data-read=book] .book>footer{break-inside:avoid}
 html[data-read=book] .body h3,html[data-read=book] .body h4,html[data-read=book] .body h5{break-after:avoid}
 /* 书页模式里图片收得比滚动模式小得多：一页只有一栏，图一大正文就没地方了。
@@ -1604,6 +1655,18 @@ footer a{color:var(--t2)}
 .body .hnum::before,.body .hnum::after{content:none}
 /* 数字标题后紧跟的一段是步骤小标题：加粗拉开层次 */
 .body .hnum + p{font-weight:600}
+/* 条目卡（::: 块）：阶段 / 步骤 / 规则等结构化条目的轻卡片。
+   标题行 = 编号（可选）+ 标题 + 徽章（可选，放最后一个 ｜ 右侧）；正文支持多段与列表。 */
+.body .ck{margin:0 0 10px;padding:11px 14px;border:1px solid var(--divider);border-radius:10px;background:var(--bg-alt)}
+.body .ck-h{display:flex;align-items:baseline;gap:8px;margin:0 0 5px}
+.body .ck-n{flex:none;font-size:13px;font-weight:600;letter-spacing:.06em;color:var(--t3);font-variant-numeric:tabular-nums}
+.body .ck-t{font-size:15px;font-weight:600;color:var(--ink);line-height:1.6}
+.body .ck-b{flex:none;margin-left:auto;align-self:center;padding:2px 9px;border-radius:999px;background:var(--bg-mute);color:var(--t2);font-size:11.5px;font-weight:500;line-height:1.6;white-space:nowrap}
+.body .ck p{margin:0 0 6px;font-size:14.5px;line-height:1.75}
+.body .ck p:last-child{margin-bottom:0}
+.body .ck ul{margin:0 0 6px;padding-left:20px;font-size:14.5px}
+.body .ck ul:last-child{margin-bottom:0}
+.body .ck li{margin:2px 0}
 /* 从提要 / 目录点进来的落点：整行中性底 + 一道品牌色左耳，一眼能认出来。
    纯 CSS（:target），不用脚本也不做动画，所以「减弱动态效果」下同样可见。 */
 .body h3:target,.body h4:target,.body h5:target,.body h6:target{
@@ -1780,6 +1843,7 @@ function stripMd(md: string): string {
   t = t.replace(/`([^`]+)`/g, '$1');
   t = t.replace(/^\s{0,3}#{1,6}\s+/gm, '');               // 标题记号
   t = t.replace(/^\s{0,3}>\s?/gm, '');                    // 引用记号
+  t = t.replace(/^:::\s*/gm, '');                         // 条目卡围栏（保留标题文字）
   t = t.replace(/^\s{0,3}(?:[-*+]|\d+[.、)])\s+/gm, '');  // 列表记号
   t = t.replace(/\*\*([^*]+)\*\*/g, '$1');
   t = t.replace(/(^|[^*])\*([^*\s][^*]*?)\*(?!\*)/g, '$1$2');
