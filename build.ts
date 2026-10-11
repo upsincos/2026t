@@ -1083,7 +1083,9 @@ function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): strin
     m = /^(#{1,4})\s+(.*)$/.exec(ln);
     if (m) {
       const lvl = Math.min(m[1].length + 2, 6);
-      out.push(`<h${lvl} id="h-${++hIdx}">${inline(m[2].trim(), mdDir, prefix)}</h${lvl}>`);
+      const ht = m[2].trim();
+      const hc = /^\d{1,3}[.、]?$/.test(ht) ? ' class="hnum"' : '';
+      out.push(`<h${lvl} id="h-${++hIdx}"${hc}>${inline(ht, mdDir, prefix)}</h${lvl}>`);
       i++;
       continue;
     }
@@ -1130,6 +1132,31 @@ function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): strin
         );
       }
       continue;
+    }
+    // 表格（Obsidian 管道表格）：连续 | 行，第二行为 |---|---| 才算数，否则按普通段落回落
+    if (/^\s*\|.*\|\s*$/.test(ln)) {
+      const rows: string[] = [];
+      let k = i;
+      while (k < lines.length && /^\s*\|.*\|\s*$/.test(lines[k])) {
+        rows.push(lines[k].trim());
+        k++;
+      }
+      const cut = (r: string): string[] =>
+        r.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+      const heads = cut(rows[0]);
+      const seps = rows.length >= 2 ? cut(rows[1]) : [];
+      if (rows.length >= 2 && seps.length === heads.length && seps.every((c) => /^:?-{1,}:?$/.test(c))) {
+        const al = seps.map((c) => (c.startsWith(':') && c.endsWith(':') ? 'center' : c.endsWith(':') ? 'right' : ''));
+        const td = (n: string, j: number, v: string): string => {
+          const st = al[j] ? ` style="text-align:${al[j]}"` : '';
+          return `<${n}${st}>${inline(v, mdDir, prefix)}</${n}>`;
+        };
+        const head = heads.map((c, j) => td('th', j, c)).join('');
+        const body = rows.slice(2).map((r) => `<tr>${cut(r).map((c, j) => td('td', j, c)).join('')}</tr>`).join('');
+        out.push(`<div class="tw"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`);
+        i = k;
+        continue;
+      }
     }
     // 列表
     if (/^\s*([-*+]|\d+[.、)])\s+/.test(ln)) {
@@ -1571,6 +1598,12 @@ footer a{color:var(--t2)}
 .body h6{font-size:15px;margin:22px 0 8px;color:var(--t2);font-weight:600;padding-left:16px;position:relative}
 .body h6::before{content:"";position:absolute;left:1px;top:.5em;width:7px;height:7px;border-radius:2px;
   background:var(--mk);opacity:.34}
+/* 纯数字标题（01、02…）：单拎成中性小徽标——步骤连排时一眼数得清，也不给正文引入彩色；
+   下方紧跟的加粗行即步骤小标题，徽标 + 标题在视觉上合成一组 */
+.body .hnum{display:inline-block;margin:30px 0 9px;padding:3px 13px;border:0;border-radius:999px;
+  background:var(--bg-mute);color:var(--t2);font-size:13px;font-weight:600;letter-spacing:.08em;
+  font-variant-numeric:tabular-nums;line-height:1.6}
+.body .hnum::before,.body .hnum::after{content:none}
 /* 从提要 / 目录点进来的落点：整行中性底 + 一道品牌色左耳，一眼能认出来。
    纯 CSS（:target），不用脚本也不做动画，所以「减弱动态效果」下同样可见。 */
 .body h3:target,.body h4:target,.body h5:target,.body h6:target{
@@ -1618,6 +1651,12 @@ footer a{color:var(--t2)}
 .body pre.code{margin:0 0 10px;padding:10px 13px;background:var(--bg-mute);border:1px solid var(--divider);border-radius:8px;overflow:auto}
 .body pre.code code{background:none;padding:0;font-size:12.5px;line-height:1.7}
 .body hr{border:0;border-top:1px solid var(--divider);margin:14px 0}
+/* 表格（Obsidian 管道表格）：与「写作统计页」同一套表格语言——通宽、横向细线、表头灰字 */
+.body .tw{overflow-x:auto;margin:0 0 12px}
+.body table{width:100%;border-collapse:collapse;font-size:14px}
+.body th,.body td{padding:8px 10px;border-bottom:1px solid var(--divider);text-align:left;line-height:1.7}
+.body th{font-weight:500;font-size:12px;color:var(--t3)}
+.body tbody tr:last-child td{border-bottom:0}
 /* 正文图片：宽图不溢出、小图按原尺寸居中、竖长图限高，图注居中 */
 .body img{max-width:100%;width:auto;height:auto;max-height:68vh;border:1px solid var(--divider);
   border-radius:10px;background:var(--bg-mute);cursor:zoom-in}
