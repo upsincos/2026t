@@ -921,7 +921,7 @@ function inline(s: string, mdDir = '', prefix = ''): string {
 
 function isBlockStart(l: string): boolean {
   return (
-    /^#{1,4}\s/.test(l) ||
+    /^#{1,6}\s/.test(l) ||
     /^```/.test(l) ||
     /^\s*>/.test(l) ||
     /^\s*([-*+]|\d+[.、)])\s+/.test(l) ||
@@ -1080,10 +1080,10 @@ function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): strin
       out.push(`<pre class="code"><code${lang ? ` class="lang-${lang}"` : ''}>${esc(buf.join('\n'))}</code></pre>`);
       continue;
     }
-    // 标题：# → h3，## → h4，### → h5，#### → h6（带 #h-N 锚点，供文章目录联动）
-    m = /^(#{1,4})\s+(.*)$/.exec(ln);
+    // 标题：# → h2，## → h3，### → h4，#### → h5，##### → h6（h1 留给文章大标题；带 #h-N 锚点，供目录联动）
+    m = /^(#{1,6})\s+(.*)$/.exec(ln);
     if (m) {
-      const lvl = Math.min(m[1].length + 2, 6);
+      const lvl = Math.min(m[1].length + 1, 6);
       const ht = m[2].trim();
       const hc = /^\d{1,3}[.、]?$/.test(ht) ? ' class="hnum"' : '';
       out.push(`<h${lvl} id="h-${++hIdx}"${hc}>${inline(ht, mdDir, prefix)}</h${lvl}>`);
@@ -1301,12 +1301,9 @@ html[data-theme=dark][data-paper=blue]{--bg:#181b21;--bg-alt:#14161b;--bg-elv:#1
 body[data-tone=prose]{--mk:#8b6a4a;--mk-soft:rgba(139,106,74,.10)}
 [data-theme=dark] body[data-tone=prose]{--mk:#d0aa80;--mk-soft:rgba(208,170,128,.14)}
 body[data-tone=prose] .article h1{font-weight:500;letter-spacing:.01em}
-/* 标题下的短记号：散文的「落款感」，比换整块底色克制得多 */
-body[data-tone=prose] .article h1::after{content:"";display:block;width:34px;height:2px;border-radius:2px;
-  margin:14px 0 0;background:var(--mk);opacity:.55}
 /* 章节前后多留一点气口，长散文才有翻页的呼吸感 */
-body[data-tone=prose] .body h3{margin-top:58px}
-body[data-tone=prose] .body h4{margin-top:42px}
+body[data-tone=prose] .body h2{margin-top:64px}
+body[data-tone=prose] .body h3{margin-top:46px}
 
 html{scroll-behavior:smooth;scroll-padding-top:calc(var(--bar) + 14px);overflow-y:scroll}
 /* 打开文章 / 后退：支持的浏览器整页平滑过渡（不支持则照常瞬时切换，无副作用） */
@@ -1527,6 +1524,7 @@ html:not(.js) .pl audio{display:block;width:100%;margin:10px 0 2px}
 .toc a.lv2{padding-left:20px}
 .toc a.lv3{padding-left:34px}
 .toc a.lv4{padding-left:46px}
+.toc a.lv5{padding-left:58px}
 .toc a:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
 .toc a.active{background:var(--mk-soft);color:var(--mk)}
 .toc a i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;min-width:16px;text-align:right}
@@ -1558,7 +1556,8 @@ html[data-read=book] .book{height:100%;columns:1;column-gap:56px;column-fill:aut
 html[data-read=book] .book.noanim{transition:none}
 html[data-read=book] .body figure,html[data-read=book] .body pre.code,html[data-read=book] .body .co,html[data-read=book] .body .ck,
 html[data-read=book] .body li,html[data-read=book] .pager,html[data-read=book] .book>footer{break-inside:avoid}
-html[data-read=book] .body h3,html[data-read=book] .body h4,html[data-read=book] .body h5{break-after:avoid}
+html[data-read=book] .body h2,html[data-read=book] .body h3,html[data-read=book] .body h4,
+html[data-read=book] .body h5,html[data-read=book] .body h6{break-after:avoid}
 /* 书页模式里图片收得比滚动模式小得多：一页只有一栏，图一大正文就没地方了。
    图整块不拆栏（figure 上是 break-inside:avoid），收到 26vh / 240px 后一张图只占一小块，
    剩下的高度还能排进上下文，页尾也不至于空一大片。要看大图点开灯箱即可。 */
@@ -1629,62 +1628,61 @@ footer a{color:var(--t2)}
   font-variant-numeric:lining-nums}
 .body p{margin:0 0 10px}
 .body p:last-child{margin-bottom:2px}
-/* 标题四级：标记形态（横线色块 → 底线色段 → 左竖条 → 前缀方块）与色深同时递进。
-   只靠字号+颜色区分会糊成一片，所以四级的「标记跨度」逐级收窄，色阶在同一支品牌蓝上逐级变浅。 */
-.body h3,.body h4,.body h5,.body h6{color:var(--ink);font-weight:600;line-height:1.5}
-/* #  · 章：顶部通栏细线 + 左端色块（全宽标记，最高层） */
-.body h3{font-size:20px;font-weight:650;margin:46px 0 14px;padding-top:15px;letter-spacing:-.3px;
-  position:relative;border-top:1px solid var(--divider)}
-.body h3::before{content:"";position:absolute;left:0;top:-2px;width:36px;height:3px;border-radius:2px;background:var(--mk)}
-/* ## · 节：底部细线 + 左端色段（半宽标记） */
-.body h4{font-size:17px;font-weight:640;margin:34px 0 12px;padding-bottom:8px;
-  position:relative;border-bottom:1px solid var(--divider)}
-.body h4::after{content:"";position:absolute;left:0;bottom:-1px;width:30px;height:2px;border-radius:2px;
-  background:var(--mk);opacity:.8}
-/* ### · 目：行首短竖标——只标第一行，不做通高竖条（通高竖条是引用块/callout 的形态） */
-.body h5{font-size:16px;margin:26px 0 9px;padding-left:10px;position:relative}
-.body h5::before{content:"";position:absolute;left:0;top:.4em;width:3px;height:.75em;border-radius:2px;
-  background:var(--mk);opacity:.5}
-/* #### · 点：前缀方块（最小标记，色最浅）；加粗正文没有方块，仍一眼可辨 */
-.body h6{font-size:15px;margin:22px 0 8px;color:var(--t2);font-weight:600;padding-left:16px;position:relative}
-.body h6::before{content:"";position:absolute;left:1px;top:.5em;width:7px;height:7px;border-radius:2px;
-  background:var(--mk);opacity:.34}
+/* 标题五级（# → h2 … ##### → h6，h1 留给文章大标题）：纯字阶层级，零装饰——
+   没有线条 / 色块 / 方块 / 竖标，只靠 字号 × 墨色 × 留白 区分，等级越深越安静：
+   骨架两级（#/##）走深墨、逐级收小；二级细节（###）保持深墨靠尺寸降级；
+   细分级（####/#####）退到灰阶，是整条阶梯上最安静的两档。加粗正文没有任何标记，一眼可与标题分开。 */
+.body h2,.body h3,.body h4,.body h5,.body h6{line-height:1.5;font-weight:600}
+/* # · 章 */
+.body h2{font-size:22px;font-weight:650;letter-spacing:-.4px;color:var(--ink);margin:56px 0 16px}
+/* ## · 节 */
+.body h3{font-size:19px;letter-spacing:-.3px;color:var(--ink);margin:42px 0 12px}
+/* ### · 目 */
+.body h4{font-size:17px;color:var(--ink);margin:32px 0 10px}
+/* #### · 点：退到灰阶（78%）——不低于正文尺寸，靠色阶保持安静 */
+.body h5{font-size:16px;color:var(--t2);margin:26px 0 8px}
+/* ##### · 细：最安静的一档（56%） */
+.body h6{font-size:15.5px;color:var(--t3);margin:22px 0 7px}
 /* 纯数字标题（01、02…）：安静的小号数字，无底色无边框；与下方步骤标题贴紧成组 */
 .body .hnum{margin:30px 0 4px;padding:0;border:0;background:none;font-size:14px;font-weight:600;
   color:var(--t2);letter-spacing:.12em;font-variant-numeric:tabular-nums;line-height:1.5}
 .body .hnum::before,.body .hnum::after{content:none}
 /* 数字标题后紧跟的一段是步骤小标题：加粗拉开层次 */
 .body .hnum + p{font-weight:600}
-/* 条目卡（::: 块）：阶段 / 步骤 / 规则等结构化条目的轻卡片。
-   标题行 = 编号（可选）+ 标题 + 徽章（可选，放最后一个 ｜ 右侧）；正文支持多段与列表。 */
-.body .ck{margin:0 0 10px;padding:11px 14px;border:1px solid var(--divider);border-radius:10px;background:var(--bg-alt)}
-.body .ck-h{display:flex;align-items:baseline;gap:8px;margin:0 0 5px}
-.body .ck-n{flex:none;font-size:13px;font-weight:600;letter-spacing:.06em;color:var(--t3);font-variant-numeric:tabular-nums}
+/* 条目卡（::: 块）：阶段 / 步骤 / 规则等结构化条目。
+   不用盒子（连着几条会堆成一摞灰方块），改成发丝线分隔的轻列表：
+   标题行 = 编号（可选，安静的数字）+ 标题 + 徽章（可选，放最后一个 ｜ 右侧）；
+   标题前一道短色标当标记，标题与正文左对齐同一道梯子；正文支持多段与列表。 */
+.body .ck{margin:0;padding:13px 0}
+.body .ck+.ck{border-top:1px solid var(--divider)}
+.body .ck-h{display:flex;align-items:baseline;gap:9px;margin:0 0 4px;break-after:avoid}
+.body .ck-n{flex:none;font-size:12.5px;font-weight:600;letter-spacing:.08em;color:var(--t3);font-variant-numeric:tabular-nums}
 .body .ck-t{font-size:15px;font-weight:600;color:var(--ink);line-height:1.6}
-.body .ck-b{flex:none;margin-left:auto;align-self:center;padding:2px 9px;border-radius:999px;background:var(--bg-mute);color:var(--t2);font-size:11.5px;font-weight:500;line-height:1.6;white-space:nowrap}
+.body .ck-b{flex:none;margin-left:auto;align-self:center;padding:2px 9px;border-radius:999px;background:var(--bg-mute);color:var(--t3);font-size:11.5px;font-weight:500;line-height:1.6;white-space:nowrap}
+
 .body .ck p{margin:0 0 6px;font-size:14.5px;line-height:1.75}
 .body .ck p:last-child{margin-bottom:0}
 .body .ck ul{margin:0 0 6px;padding-left:20px;font-size:14.5px}
 .body .ck ul:last-child{margin-bottom:0}
 .body .ck li{margin:2px 0}
-/* 从提要 / 目录点进来的落点：整行中性底 + 一道品牌色左耳，一眼能认出来。
+/* 从提要 / 目录点进来的落点：只铺一层中性底，不做任何色条（标题上零彩色）。
    纯 CSS（:target），不用脚本也不做动画，所以「减弱动态效果」下同样可见。 */
-.body h3:target,.body h4:target,.body h5:target,.body h6:target{
-  background:var(--bg-alt);border-radius:6px;box-shadow:inset 3px 0 0 var(--mk)}
+.body h2:target,.body h3:target,.body h4:target,.body h5:target,.body h6:target{
+  background:var(--bg-alt);border-radius:6px}
 .body ul,.body ol{margin:0 0 10px;padding-left:22px}
 .body li{margin:3px 0}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
-.body blockquote{margin:0 0 10px;padding:9px 13px;background:var(--mk-soft);border-left:3px solid var(--mk);border-radius:0 8px 8px 0;color:var(--t1)}
+.body blockquote{margin:0 0 12px;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--divider);border-radius:10px;color:var(--t1)}
 .body blockquote p{margin:0}
 /* 提醒块（Obsidian callout：> [!warning] 标题）*/
 .body .co{margin:0 0 12px;padding:9px 13px;border-left:3px solid var(--gray-1);border-radius:0 8px 8px 0;background:var(--gray-soft);color:var(--t1)}
 .body .co .co-t{font-size:13px;font-weight:600;margin:0 0 4px}
 .body .co p{margin:0 0 5px}
 .body .co p:last-child{margin-bottom:0}
-/* 开头提要「> [!summary] 提要」：默认收起，点标题行展开（折叠记号用 ▸/▾，与「来源」同一套写法）。
-   底色走中性面（与侧栏同色）+ 一道品牌色左耳，整块不铺彩色，跟全站素雅基调一致。 */
-.body .co-summary{margin-bottom:14px;padding:10px 15px;background:var(--bg-alt);
-  border:1px solid var(--divider);border-left:3px solid var(--brand-1);border-radius:0 8px 8px 0}
+/* 开头提要「> [!summary] 提要」：默认收起，点标题行展开（折叠记号用 ▸/▾）。
+   中性底 + 细边框，不做任何色条装饰，和条目卡同一套卡片语言。 */
+.body .co-summary{margin-bottom:14px;padding:10px 14px;background:var(--bg-alt);
+  border:1px solid var(--divider);border-radius:10px}
 .body .co-summary>summary.co-t{display:flex;align-items:center;gap:7px;margin:0;color:var(--t2);
   cursor:pointer;list-style:none;user-select:none;transition:color .15s}
 .body .co-summary>summary.co-t::-webkit-details-marker{display:none}
@@ -2035,7 +2033,7 @@ function renderPostPage(pages: PageRef[], i: number, footer: string): string {
   // 正文里的标题会带 #h-N 锚点；小节 ≥2 时：宽屏出左侧目录、窄屏出顶栏跳转下拉
   const bodyHtml = mdToHtml(p.entry.body, p.entry.dir, PAGE_PREFIX, p.entry.title);
   const heads: { id: string; text: string; lvl: number }[] = [];
-  const hre = /<h([3-6]) id="(h-\d+)">([\s\S]*?)<\/h\1>/g;
+  const hre = /<h([2-6]) id="(h-\d+)">([\s\S]*?)<\/h\1>/g;
   let hm = hre.exec(bodyHtml);
   while (hm) {
     heads.push({ id: hm[2], text: stripTags(hm[3]), lvl: Number(hm[1]) });
@@ -2060,7 +2058,7 @@ function renderPostPage(pages: PageRef[], i: number, footer: string): string {
       tocItems
         .map(
           (h) =>
-            `<a class="lv${Math.min(h.depth + 1, 4)}" href="#${h.id}"><i>${h.num}</i><span>${esc(h.text)}</span></a>`,
+            `<a class="lv${Math.min(h.depth + 1, 5)}" href="#${h.id}"><i>${h.num}</i><span>${esc(h.text)}</span></a>`,
         )
         .join('') +
       `</aside>`
@@ -2275,6 +2273,7 @@ let IDX=null,idxLoaded=false,idxLoading=false,byHref=null;
 const exOrig=new Map();
 items.forEach(it=>{
   const e=it.querySelector('.iex');
+  it._ex=e;
   if(e)exOrig.set(it,e.textContent);
   /* 标题/标签/摘要拼一份小写缓存：每次敲键都重建 300 份字符串没必要。
      摘要有可能在正文命中时被换成 snippet，所以缓存必须取「原始」文本，且只算一次。 */
@@ -2295,8 +2294,11 @@ function loadIdx(){
 }
 function recOf(it){
   if(!byHref) return null;
-  const a=it.querySelector('.ititle');
-  return a?byHref[a.getAttribute('href')]||null:null;
+  const a=it._a||(it._a=it.querySelector('.ititle'));
+  const r=a?byHref[a.getAttribute('href')]:null;
+  /* 正文索引里是未小写的原文；每次敲键对 300 条各做一遍 toLowerCase 太亏，缓存在记录上只算一次 */
+  if(r&&r._lb===undefined) r._lb=(r.b||'').toLowerCase();
+  return r||null;
 }
 function hasAll(hay,parts){
   for(let i=0;i<parts.length;i++){if(hay.indexOf(parts[i])<0)return false;}
@@ -2309,7 +2311,11 @@ function snip(text,term){
   return (a>0?'…':'')+text.slice(a,b)+(b<text.length?'…':'');
 }
 
+/* 没有高亮过就直接返回：空跑一次 querySelectorAll('mark') + normalize() 也是随列表线性变差的活 */
+let markN=0;
 function clearMarks(root){
+  if(!markN) return;
+  markN=0;
   const ms=[...root.querySelectorAll('mark')];
   ms.forEach(m=>m.replaceWith(document.createTextNode(m.textContent)));
   if(ms.length) root.normalize();
@@ -2335,6 +2341,7 @@ function markAll(root,term){
       const m=document.createElement('mark');
       m.textContent=n.nodeValue.slice(i,i+t.length);
       frag.appendChild(m);
+      markN++;
       last=i+t.length; i=raw.indexOf(t,last);
     }
     frag.appendChild(document.createTextNode(n.nodeValue.slice(last)));
@@ -2348,14 +2355,15 @@ function apply(){
   let shown=0;
   const matched=[];
   items.forEach(it=>{
-    const ex=it.querySelector('.iex');
-    if(ex) ex.textContent=exOrig.get(it)||'';
+    const ex=it._ex;
+    /* 只在内容真的不同时写 textContent：不然每次敲键都给 300 条重写一遍文本节点 */
+    if(ex){const o=exOrig.get(it)||'';if(ex.textContent!==o)ex.textContent=o;}
     let ok=(secMode===null||it.getAttribute('data-sec')===secMode);
     if(ok&&term&&!hasAll(it._hay,parts)){
       // 标题 / 摘要 / 标签没命中 → 再翻正文索引；命中就把摘要换成正文里那句话
       ok=false;
       const r=recOf(it);
-      if(r&&hasAll(r.b.toLowerCase(),parts)){ok=true;if(ex)ex.textContent=snip(r.b,parts[0]);}
+      if(r&&hasAll(r._lb,parts)){ok=true;if(ex)ex.textContent=snip(r.b,parts[0]);}
     }
     it.classList.toggle('hidden',!ok);
     if(ok){shown++;matched.push(it);}
@@ -2459,7 +2467,7 @@ if(lb){
 const tocLinks=[...document.querySelectorAll('.toc a')];
 const jumpSel=document.getElementById('jump');
 if(tocLinks.length){
-  const heads=[...document.querySelectorAll('.body h3[id],.body h4[id],.body h5[id],.body h6[id]')];
+  const heads=[...document.querySelectorAll('.body h2[id],.body h3[id],.body h4[id],.body h5[id],.body h6[id]')];
   const io=new IntersectionObserver(es=>{
     es.forEach(e=>{ if(e.isIntersecting){
       const id=e.target.id;
@@ -2488,7 +2496,7 @@ const wide=window.matchMedia('(min-width:821px)');
 let bkPage=0;
 function bkOn(){return !!book&&document.documentElement.getAttribute('data-read')==='book'&&wide.matches;}
 function bkStep(){return book.clientWidth+BK_GAP;}
-function bkHeads(){return document.querySelectorAll('.body h3[id],.body h4[id],.body h5[id],.body h6[id]');}
+function bkHeads(){return document.querySelectorAll('.body h2[id],.body h3[id],.body h4[id],.body h5[id],.body h6[id]');}
 function bkPageOf(el){
   const r=el.getBoundingClientRect(),b=book.getBoundingClientRect();
   return Math.max(0,Math.round((r.left-b.left)/bkStep()));
@@ -2840,16 +2848,16 @@ function renderStatsPage(pages: PageRef[]): string {
     `</div>`;
 
   const body =
-    `<h3>概览</h3>` +
+    `<h2>概览</h2>` +
     `<p class="st-lead">共 ${total} 篇，累计 ${fmtSep(totalWords)} 字${days ? `，分布在 ${days} 天里` : ''}。` +
     (longest ? `最长的一篇是《${esc(longest.entry.title)}》，${fmtSep(wordsOf(longest))} 字。` : '') +
     (total > dated.length ? `有 ${total - dated.length} 篇没写日期，不计入下面的按月统计。` : '') +
     `</p>` +
     cards +
-    (months.length ? `<h3>每月发文</h3><div class="st-bars">${bars}</div>` : '') +
-    (secRows ? `<h3>栏目</h3><table class="st-tab"><thead><tr><th>栏目</th><th class="n">篇数</th><th class="n">字数</th><th class="n">平均</th></tr></thead><tbody>${secRows}</tbody></table>` : '') +
-    (tags ? `<h3>标签</h3><div class="st-tags">${tags}</div>` : '') +
-    (archive ? `<h3>按月回顾</h3><div class="st-arch">${archive}</div>` : '');
+    (months.length ? `<h2>每月发文</h2><div class="st-bars">${bars}</div>` : '') +
+    (secRows ? `<h2>栏目</h2><table class="st-tab"><thead><tr><th>栏目</th><th class="n">篇数</th><th class="n">字数</th><th class="n">平均</th></tr></thead><tbody>${secRows}</tbody></table>` : '') +
+    (tags ? `<h2>标签</h2><div class="st-tags">${tags}</div>` : '') +
+    (archive ? `<h2>按月回顾</h2><div class="st-arch">${archive}</div>` : '');
 
   const bar =
     `<header class="bar"><a class="back" href="${escAttr(basename(OUT_FILE))}">← 返回首页</a>` +
