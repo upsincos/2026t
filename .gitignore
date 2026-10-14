@@ -17,5 +17,10 @@ dist/
 # 订阅源（构建时生成）
 /feed.xml
 
+# 404 / sitemap / robots（构建时生成）
+/404.html
+/sitemap.xml
+/robots.txt
+
 # 参考素材（下载的对照页面，不入库）
 teststyle/

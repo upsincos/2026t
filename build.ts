@@ -1352,7 +1352,8 @@ body[data-tone=prose] .article h1{font-weight:500;letter-spacing:.01em}
 body[data-tone=prose] .body h2{margin-top:64px}
 body[data-tone=prose] .body h3{margin-top:46px}
 
-html{scroll-behavior:smooth;scroll-padding-top:calc(var(--bar) + 14px);overflow-y:scroll}
+/* html 底色 = 画布底色：正常浏览器会从 body 传播，部分内嵌浏览器不会，显式给上（零副作用） */
+html{background-color:var(--bg);scroll-behavior:smooth;scroll-padding-top:calc(var(--bar) + 14px);overflow-y:scroll}
 /* 打开文章 / 后退：支持的浏览器整页平滑过渡（不支持则照常瞬时切换，无副作用） */
 @view-transition{navigation:auto}
 body{margin:0;background-color:var(--bg);color:var(--t1);font:15px/1.75 var(--ui-font);
@@ -1416,14 +1417,14 @@ body>main{margin-left:auto;margin-right:auto}
 #side-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:32px;padding:0 8px;font-size:14px}
 .sblock{padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--divider)}
 .sblock:last-child{padding-bottom:0;margin-bottom:0;border-bottom:0}
-.side .gt{font-size:13px;font-weight:600;margin:0 0 6px;color:var(--t1);
+.side .gt{font-size:12px;font-weight:600;letter-spacing:.08em;margin:0 0 10px;color:var(--t2);
   display:flex;justify-content:space-between;align-items:baseline}
-.side .gt small{font-weight:400;font-size:11px;color:var(--t3);font-variant-numeric:tabular-nums}
+.side .gt small{font-weight:400;font-size:11px;letter-spacing:normal;color:var(--t3);font-variant-numeric:tabular-nums}
 .scat,.sitem{display:flex;align-items:center;gap:7px;width:100%;padding:4px 6px;border:0;border-radius:6px;
-  background:none;font:inherit;font-size:12.5px;line-height:1.5;color:var(--t2);text-align:left;
+  background:none;font:inherit;font-size:13px;line-height:1.5;color:var(--t2);text-align:left;
   cursor:pointer;transition:background-color .15s,color .15s;overflow-wrap:anywhere}
 .scat:hover,.sitem:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
-.scat[aria-pressed=true]{background:var(--brand-soft);color:var(--brand-1)}
+.scat[aria-pressed=true]{background:var(--hl);color:var(--ink)}
 /* 标签筛选：自绘下拉（触发按钮 + 内嵌面板，与侧栏同一套设计语言） */
 .tagsd{position:relative}
 .tagsd-btn{display:flex;align-items:center;gap:7px;width:100%;height:30px;padding:0 10px;border-radius:8px;
@@ -1441,11 +1442,11 @@ body>main{margin-left:auto;margin-right:auto}
 .tagsd[data-open="1"] .tagsd-panel{display:block;animation:tagsdIn .14s ease-out}
 @keyframes tagsdIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 .tagsd-opt{display:flex;align-items:center;gap:6px;width:100%;padding:5px 8px;border:0;border-radius:6px;
-  background:none;font:inherit;font-size:12.5px;line-height:1.5;color:var(--t2);cursor:pointer;text-align:left;overflow-wrap:anywhere}
+  background:none;font:inherit;font-size:13px;line-height:1.5;color:var(--t2);cursor:pointer;text-align:left;overflow-wrap:anywhere}
 .tagsd-opt:hover{background:var(--bg-alt);color:var(--t1)}
-.tagsd-opt.on{background:var(--brand-soft);color:var(--brand-1)}
+.tagsd-opt.on{background:var(--hl);color:var(--ink)}
 .tagsd-opt i{margin-left:auto;flex:none;font-style:normal;color:var(--t3);font-size:11px;font-variant-numeric:tabular-nums}
-.tagsd-opt.on i{color:var(--brand-1)}
+.tagsd-opt.on i{color:var(--t2)}
 .scat i,.sitem i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;margin-left:auto;font-size:11px}
 .scat span,.sitem span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
@@ -1564,19 +1565,20 @@ html:not(.js) .pl audio{display:block;width:100%;margin:10px 0 2px}
 [data-side="0"] .shell{justify-content:center}
 .toc{position:sticky;top:var(--bar);flex:none;width:var(--side);height:calc(100vh - var(--bar));
   overflow-y:auto;padding:18px 14px 80px 18px;background:var(--bg-alt);border-right:1px solid var(--divider)}
-.toc .gt{font-size:13px;font-weight:600;margin:0 0 6px;color:var(--t1);display:flex;justify-content:space-between;align-items:baseline}
-.toc .gt small{font-weight:400;font-size:11px;color:var(--t3)}
-.toc a{display:flex;gap:6px;align-items:baseline;padding:3px 6px;border-radius:6px;font-size:12.5px;
+.toc .gt{font-size:12px;font-weight:600;letter-spacing:.08em;margin:0 0 10px;color:var(--t2);display:flex;justify-content:space-between;align-items:baseline}
+.toc .gt small{font-weight:400;font-size:11px;letter-spacing:normal;color:var(--t3)}
+.toc a{display:flex;gap:6px;align-items:baseline;padding:3px 6px;border-radius:6px;font-size:13px;
   line-height:1.5;color:var(--t2);transition:background-color .15s,color .15s}
 .toc a.lv1{font-weight:600;color:var(--t1)}
-.toc a.lv1 i{color:var(--mk)}
 .toc a.lv2{padding-left:20px}
 .toc a.lv3{padding-left:34px}
 .toc a.lv4{padding-left:46px}
 .toc a.lv5{padding-left:58px}
 .toc a:hover{background:var(--bg-elv);color:var(--t1);text-decoration:none}
-.toc a.active{background:var(--mk-soft);color:var(--mk)}
-.toc a i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;min-width:16px;text-align:right}
+.toc a.active{background:var(--hl);color:var(--ink)}
+.toc a.active:hover{background:var(--hl);color:var(--ink)}
+.toc a.active i{color:var(--t2)}
+.toc a i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;min-width:16px;text-align:right;font-size:12px}
 .shell>.article,.shell>main{flex:1;min-width:0}
 .article{max-width:760px}
 .article h1{font-family:var(--font);font-size:26px;font-weight:500;line-height:1.45;margin:2px 0 10px;letter-spacing:-.2px;
@@ -1690,6 +1692,18 @@ footer a{color:var(--t2)}
 .body p:last-child{margin-bottom:2px}
 /* 小屏反升：手机上正文升到 16px（阅读距离更近、每行更少字），大屏保持 15.5px */
 @media (max-width:520px){.body{font-size:16px}}
+/* 中文排版增强（渐进增强，浏览器不支持则原样）——
+   标点全量挤压：trim-both（截至 2026-10 Chrome 尚未实现，实现之日自动生效）；
+   中英缝隙：汉字与拉丁字母/数字之间自动留出标准空隙（“1小时ema21”变成有呼吸的排版）。 */
+@supports (text-spacing-trim: trim-both){.body{text-spacing-trim:trim-both}}
+@supports (text-autospace: normal){.body{text-autospace:normal}}
+/* ── 404 页 ── */
+.nf{max-width:560px;margin:0 auto;padding:16vh 24px 0}
+.nf .k{font-size:12px;font-weight:600;letter-spacing:.26em;color:var(--t3);margin:0 0 14px}
+.nf h1{font-size:24px;font-weight:650;letter-spacing:-.02em;color:var(--ink);margin:0 0 10px}
+.nf p{font-size:15px;line-height:1.8;color:var(--t2);margin:0 0 28px}
+.nf .nf-a{margin:0}
+.nf .nf-a a{color:var(--brand-1)}
 /* 标题五级（# → h2 … ##### → h6，h1 留给文章大标题）：零装饰、三段层级——
    大段（#/##）：大而紧（全墨、负字距、大留白）；
    中段（###）：稳标题（比正文大半档、满墨、中性字距）；
@@ -1753,6 +1767,7 @@ html:not(.js) .body h5:target .ht,html:not(.js) .body h6:target .ht{background:v
 [data-theme=dark] ::selection{background:rgba(168,177,255,.26)}
 .body ul,.body ol{margin:0 0 10px;padding-left:22px}
 .body li{margin:3px 0}
+.body li::marker{color:var(--t3)}
 .body li>ul,.body li>ol{margin-bottom:0;margin-top:3px}
 .body blockquote{margin:0 0 12px;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--divider);border-radius:10px;color:var(--t1)}
 .body blockquote p{margin:0}
@@ -2005,6 +2020,7 @@ interface HeadMeta {
   type?: 'website' | 'article';
   published?: string;
   tags?: string[];
+  robots?: string;                 // 仅 404：noindex
   bodyAttr?: string;               // 直接拼到 <body> 上的属性（文章语气 data-tone 用）
 }
 const OG_CARD = 'og.png';          // 默认分享图（源文件 static/og.png，构建时复制到站点根）
@@ -2054,11 +2070,15 @@ function pageHead(title: string, desc: string, meta: HeadMeta = {}): string {
     `<link rel="canonical" href="${escAttr(url)}">` +
     `<link rel="alternate" type="application/rss+xml" title="${escAttr(SITE.name)}" href="${escAttr(absUrl('feed.xml'))}">` +
     og +
+    (meta.robots ? `<meta name="robots" content="${escAttr(meta.robots)}">` : '') +
     `<title>${esc(title)}</title><style>${CSS}</style>` +
     // 首帧之前就把记忆里的侧栏 / 明暗 / 外观 / 阅读模式落到 <html> 上，避免闪一下再变
     `<script>try{` +
     `var d=document.documentElement;` +
     `d.classList.add('js');` +
+    `var t=localStorage.getItem('blog-theme');` +
+    `if(t)d.setAttribute('data-theme',t);` +
+    `else if(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)d.setAttribute('data-theme','dark');` +
     `if(localStorage.getItem('blog-side')==='0')d.setAttribute('data-side','0');` +
     `['paper','font'].forEach(function(k){` +
     `var v=localStorage.getItem('blog-'+k);if(v)d.setAttribute('data-'+k,v);});` +
@@ -2872,6 +2892,50 @@ function writeFeed(pages: PageRef[]): void {
   writeFileSync(join(SITE_ROOT, 'feed.xml'), xml, 'utf8');
 }
 
+// 404 页：找不到的路径由 GitHub Pages 自动回落到它（站点根 404.html；file:// 下也可直接打开）
+function render404(): string {
+  return (
+    pageHead('页面不存在 · ' + SITE.name, '你要找的页面不存在，或者已经搬走了。', {
+      url: '404.html',
+      robots: 'noindex',
+    }) +
+    `<div class="nf">` +
+    `<p class="k">404</p>` +
+    `<h1>这里什么都没有</h1>` +
+    `<p>你要找的页面不存在，或者已经搬走了。</p>` +
+    `<p class="nf-a"><a href="${escAttr(absUrl(''))}">← 回到首页</a></p>` +
+    `</div></body></html>`
+  );
+}
+
+// sitemap.xml：给搜索引擎的目录表（首页 + 每篇文章 + 两个汇总页）
+function writeSitemap(pages: PageRef[]): void {
+  const latest = pages.map((p) => p.entry.date).filter(Boolean).sort().pop();
+  const row = (loc: string, lastmod?: string) =>
+    `<url><loc>${xmlEsc(absUrl(loc))}</loc>` +
+    (lastmod ? `<lastmod>${String(lastmod).slice(0, 10)}</lastmod>` : '') +
+    `</url>`;
+  const xml =
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' +
+    row('', latest) +
+    pages.map((p) => row(p.outName, p.entry.date)).join('') +
+    row('stats.html') +
+    row('highlights.html') +
+    '</urlset>';
+  writeFileSync(join(SITE_ROOT, 'sitemap.xml'), xml, 'utf8');
+}
+
+// robots.txt：放行 + 指向 sitemap（配了站点绝对地址时才写）
+function writeRobots(): void {
+  if (!SITE.url) return;
+  writeFileSync(
+    join(SITE_ROOT, 'robots.txt'),
+    'User-agent: *\nAllow: /\n\nSitemap: ' + absUrl('sitemap.xml') + '\n',
+    'utf8',
+  );
+}
+
 function writeSearchIndex(pages: PageRef[]): void {
   const idx = pages.map((p) => ({
     u: p.outName,
@@ -3318,6 +3382,9 @@ function main(): void {
   writeFileSync(join(SITE_ROOT, 'highlights.html'), renderHighlightsPage(pages), 'utf8');
   writeSearchIndex(pages);
   writeFeed(pages);
+  writeFileSync(join(SITE_ROOT, '404.html'), render404(), 'utf8');
+  writeSitemap(pages);
+  writeRobots();
   copyOgCard();
 
   // 清理改过名 / 已删除文章留下的旧页面（只动文章目录根部的 .html）
