@@ -1294,7 +1294,7 @@ function mdToHtml(md: string, mdDir: string, prefix = '', wikiLabel = ''): strin
 const CSS = `
 *,*::before,*::after{box-sizing:border-box}
 :root{
-  --bg:#ffffff;--bg-alt:#f6f6f7;--bg-elv:#ffffff;--bg-mute:#f1f1f2;
+  --bg:#fbfbfa;--bg-alt:#f6f6f7;--bg-elv:#ffffff;--bg-mute:#f1f1f2;
   --divider:#e2e2e3;
   --t1:rgba(60,60,67,1);--t2:rgba(60,60,67,.78);--t3:rgba(60,60,67,.56);
   --ink:#1e2029;
@@ -1579,7 +1579,7 @@ html:not(.js) .pl audio{display:block;width:100%;margin:10px 0 2px}
 .toc a i{font-style:normal;color:var(--t3);font-variant-numeric:tabular-nums;flex:none;min-width:16px;text-align:right}
 .shell>.article,.shell>main{flex:1;min-width:0}
 .article{max-width:760px}
-.article h1{font-family:var(--font);font-size:26px;font-weight:600;line-height:1.45;margin:2px 0 10px;letter-spacing:-.2px;
+.article h1{font-family:var(--font);font-size:26px;font-weight:500;line-height:1.45;margin:2px 0 10px;letter-spacing:-.2px;
   color:var(--ink);overflow-wrap:anywhere}
 .article .chips{margin:12px 0 22px}
 .pager{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin:36px 0 0;
@@ -1688,6 +1688,8 @@ footer a{color:var(--t2)}
   font-variant-numeric:lining-nums}
 .body p{margin:0 0 10px}
 .body p:last-child{margin-bottom:2px}
+/* 小屏反升：手机上正文升到 16px（阅读距离更近、每行更少字），大屏保持 15.5px */
+@media (max-width:520px){.body{font-size:16px}}
 /* 标题五级（# → h2 … ##### → h6，h1 留给文章大标题）：零装饰、三段层级——
    大段（#/##）：大而紧（全墨、负字距、大留白）；
    中段（###）：稳标题（比正文大半档、满墨、中性字距）；
@@ -1979,7 +1981,7 @@ const LOOK_BAR =
   `<div class="look" id="look">` +
   `<button class="btn" id="look-btn" type="button" aria-expanded="false" aria-haspopup="true">外观</button>` +
   `<div class="look-panel" id="look-panel">` +
-  lookRow('底色', 'paper', [['', '纯白'], ['cream', '米黄'], ['green', '豆绿'], ['blue', '灰蓝']]) +
+  lookRow('底色', 'paper', [['', '纸白'], ['cream', '米黄'], ['green', '豆绿'], ['blue', '灰蓝']]) +
   lookRow('字体', 'font', [['', '默认'], ['serif', '宋体'], ['kai', '楷体'], ['fangsong', '仿宋'], ['yuan', '圆体']]) +
   `</div></div>`;
 
@@ -2046,7 +2048,7 @@ function pageHead(title: string, desc: string, meta: HeadMeta = {}): string {
     `<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">` +
     `<meta name="color-scheme" content="light dark">` +
-    `<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">` +
+    `<meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfbfa">` +
     `<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1b1b1f">` +
     `<meta name="description" content="${d}">` +
     `<link rel="canonical" href="${escAttr(url)}">` +
